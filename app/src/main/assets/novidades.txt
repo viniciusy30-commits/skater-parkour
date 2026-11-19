@@ -1,3 +1,9 @@
+#id 2026-11-19-c
+#titulo Agarrar na parede corrigido
+- Agora o pulo na parede é feito bem perto dela: pule perto da parede e aperte pular de novo para se agarrar
+- Mãos apoiadas na borda e corpo encostado, sem atravessar a parede
+- Transição do pulo para o agarrar mais suave
+
 #id 2026-11-19-b
 #titulo Agarrar na parede e subir
 - Aperte o botão de pular duas vezes rápido de frente para uma parede: o personagem pula e fica agarrado na borda

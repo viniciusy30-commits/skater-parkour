@@ -56,6 +56,13 @@ class World {
     private var fwdZ = 1f
     private var topH = 0f
     private var yawTarget = 0f
+    private var jStart = 0f
+    private var hzS = 0f
+    private var corrX = 0f
+    private var corrZ = 0f
+
+    /** Tempo dentro da animação de pulo na parede (começa no ponto certo conforme a distância). */
+    var clipT = 0f
 
     init {
         build()
@@ -177,7 +184,7 @@ class World {
 
     private fun consider(b: Block, nx: Float, nz: Float, plane: Float, lat: Float, lo: Float, hi: Float, fx: Float, fz: Float) {
         val d = if (nx != 0f) (x - plane) * nx else (z - plane) * nz
-        if (d < 0.15f || d > 1.9f) return
+        if (d < 0.2f || d > GRAB_MAX_DIST) return
         if (fx * (-nx) + fz * (-nz) < 0.6f) return
         if (lat < lo - 0.15f || lat > hi + 0.15f) return
         if (found && d >= bestD) return
@@ -202,8 +209,8 @@ class World {
         val fz = cos(yaw)
         found = false
         for (b in blocks) {
-            val rise = b.h - supportY
-            if (rise < 0.9f || rise > 2.4f) continue
+            val rise = b.h - y
+            if (rise < 0.5f || rise > 1.9f) continue
             consider(b, 1f, 0f, b.cx + b.sx / 2f, z, b.cz - b.sz / 2f, b.cz + b.sz / 2f, fx, fz)
             consider(b, -1f, 0f, b.cx - b.sx / 2f, z, b.cz - b.sz / 2f, b.cz + b.sz / 2f, fx, fz)
             consider(b, 0f, 1f, b.cz + b.sz / 2f, x, b.cx - b.sx / 2f, b.cx + b.sx / 2f, fx, fz)
@@ -227,6 +234,25 @@ class World {
         modeT = 0f
         queuedClimb = false
         offX = 0f; offY = 0f; offZ = 0f
+
+        // começa a animação no ponto do pulo em que o quadril já está à distância certa da parede
+        val jc = clipJump ?: return false
+        val dur = jc.duration
+        val target = (WALL_Z - bestD).coerceIn(hz0 + 0.05f, hzEnd - 0.1f)
+        var t = 0f
+        while (t < dur) {
+            jc.hips(t, tmpP)
+            if (tmpP[2] >= target) break
+            t += 1f / 60f
+        }
+        jStart = min(t, dur - 0.2f)
+        if (jStart < 0f) jStart = 0f
+        jc.hips(jStart, tmpP)
+        hzS = tmpP[2]
+        if (hzEnd - hzS < 0.05f) hzS = hzEnd - 0.05f
+        corrX = sx0 - (ox + fwdX * hzS)
+        corrZ = sz0 - (oz + fwdZ * hzS)
+        clipT = jStart
         return true
     }
 
@@ -253,15 +279,16 @@ class World {
                     mode = 0
                     return
                 }
-                if (presses > 0 && modeT > 0.25f) queuedClimb = true
-                val t = min(modeT, j.duration)
-                j.hips(t, tmpP)
-                val u = ((tmpP[2] - hz0) / (hzEnd - hz0)).coerceIn(0f, 1f)
-                x = sx0 + (ox - sx0) * u
-                z = sz0 + (oz - sz0) * u
+                if (presses > 0 && modeT > 0.12f) queuedClimb = true
+                val jt = min(jStart + modeT, j.duration)
+                clipT = jt
+                j.hips(jt, tmpP)
+                val u = ((tmpP[2] - hzS) / (hzEnd - hzS)).coerceIn(0f, 1f)
+                x = ox + corrX * (1f - u)
+                z = oz + corrZ * (1f - u)
                 y = sy0 + (oy - sy0) * u
                 turnTo(yawTarget, min(1f, dt * 18f))
-                if (modeT >= j.duration) {
+                if (jt >= j.duration) {
                     x = ox; y = oy; z = oz
                     yaw = yawTarget
                     mode = 2
@@ -276,15 +303,17 @@ class World {
                     modeT = 0f
                 } else if (Input.jy < -0.7f && modeT > 0.35f) {
                     // soltar: joystick para trás
-                    exitTo(ox + fwdX * 0.83f, oy + 0.55f, oz + fwdZ * 0.83f)
+                    exitTo(ox + fwdX * 0.83f, oy + 0.6f, oz + fwdZ * 0.83f)
                     grounded = false
                     vy = -0.5f
                 }
             }
             3 -> {
-                x = ox; y = oy; z = oz
                 val c = clipClimb
                 val dur = if (c != null) c.duration else 1f
+                val p = ((modeT / dur - 0.3f) / 0.7f).coerceIn(0f, 1f)
+                x = ox; z = oz
+                y = oy + CLIMB_RAISE * p * p * (3f - 2f * p)
                 if (modeT >= dur) {
                     exitTo(ox + fwdX * CLIMB_FWD, topH, oz + fwdZ * CLIMB_FWD)
                     grounded = true
@@ -375,8 +404,10 @@ class World {
         const val BOUND = 38f
         const val DOUBLE_T = 0.5f
         // medidas das animações de parede (feitas para uma borda de ~1,25 m)
-        const val WALL_Z = 1.36f
-        const val HANG_Y = 1.225f
+        const val WALL_Z = 1.385f
+        const val HANG_Y = 1.283f
         const val CLIMB_FWD = 1.551f
+        const val CLIMB_RAISE = 0.125f
+        const val GRAB_MAX_DIST = 0.8f
     }
 }

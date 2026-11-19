@@ -147,7 +147,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         val rate = (world.speed / 2.66f).coerceIn(0.45f, 1.7f)
         tClip[0] += dt
         tClip[1] += dt * rate
-        if (mode == 1) tClip[3] = world.modeT
+        if (mode == 1) tClip[3] = world.clipT
         if (mode == 2) tClip[4] = world.modeT
         if (mode == 3) tClip[5] = world.modeT
 
