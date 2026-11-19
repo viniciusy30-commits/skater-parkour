@@ -1,3 +1,9 @@
+#id 2026-11-19-d
+#titulo Pendurar na parede sem atravessar
+- Pernas não atravessam mais a parede quando o personagem está pendurado
+- Mãos apoiadas de verdade em cima da borda, sem flutuar
+- Chegada na parede e começo da subida também ajustados
+
 #id 2026-11-19-c
 #titulo Agarrar na parede corrigido
 - Agora o pulo na parede é feito bem perto dela: pule perto da parede e aperte pular de novo para se agarrar
