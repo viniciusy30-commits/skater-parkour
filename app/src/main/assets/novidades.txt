@@ -1,0 +1,6 @@
+#id 2026-11-19-a
+#titulo Primeira versão nativa
+- Personagem 3D com animações de corrida e parado
+- Arena de parkour com blocos e degraus
+- Joystick para andar, botão Pular e câmera arrastando a tela
+- Atualização pelo próprio app em Configurações
