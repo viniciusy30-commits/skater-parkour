@@ -114,7 +114,7 @@ class IconButton(context: Context, private val kind: Int) : View(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 animate().scaleX(0.88f).scaleY(0.88f).setDuration(90).start()
-                if (kind == JUMP) Input.jump = true
+                if (kind == JUMP) Input.pressJump()
             }
             MotionEvent.ACTION_UP -> {
                 animate().scaleX(1f).scaleY(1f).setDuration(140).start()

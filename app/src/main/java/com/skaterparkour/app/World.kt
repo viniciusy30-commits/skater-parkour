@@ -3,14 +3,13 @@ package com.skaterparkour.app
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 class Block(val cx: Float, val cz: Float, val sx: Float, val sz: Float, val h: Float, val r: Float, val g: Float, val b: Float)
 
-/** Arena de parkour e física simples do personagem. */
+/** Arena de parkour, física do personagem e a mecânica de agarrar na parede e subir. */
 class World {
     val blocks = ArrayList<Block>()
 
@@ -28,8 +27,48 @@ class World {
     var camYaw = 0f
     var camPitch = 0.38f
 
+    // 0 = normal, 1 = pulando para a parede, 2 = pendurado, 3 = subindo
+    var mode = 0
+    var modeT = 0f
+    // compensação (espaço do modelo) das poses de parede enquanto elas somem depois de sair do modo
+    var offX = 0f
+    var offY = 0f
+    var offZ = 0f
+
+    private var clipJump: Clip? = null
+    private var clipClimb: Clip? = null
+    private var hz0 = 0f
+    private var hzEnd = 1f
+    private val tmpP = FloatArray(3)
+
+    private var timeNow = 0f
+    private var lastPress = -10f
+    private var queuedClimb = false
+
+    // dados da agarrada atual
+    private var sx0 = 0f
+    private var sy0 = 0f
+    private var sz0 = 0f
+    private var ox = 0f
+    private var oy = 0f
+    private var oz = 0f
+    private var fwdX = 0f
+    private var fwdZ = 1f
+    private var topH = 0f
+    private var yawTarget = 0f
+
     init {
         build()
+    }
+
+    fun setClips(jump: Clip, climb: Clip) {
+        clipJump = jump
+        clipClimb = climb
+        jump.hips(0f, tmpP)
+        hz0 = tmpP[2]
+        jump.hips(jump.duration, tmpP)
+        hzEnd = tmpP[2]
+        if (hzEnd - hz0 < 0.1f) hzEnd = hz0 + 0.1f
     }
 
     private fun add(cx: Float, cz: Float, sx: Float, sz: Float, h: Float, r: Float, g: Float, b: Float) {
@@ -56,6 +95,8 @@ class World {
         // obstáculos baixos
         add(0f, 3f, 1f, 1f, 0.3f, 0.95f, 0.85f, 0.30f)
         add(-2f, 4f, 1f, 1f, 0.45f, 0.95f, 0.85f, 0.30f)
+        // parede de treino para agarrar e subir (1,5 m), bem perto do início
+        add(0f, 0f, 5f, 0.6f, 1.5f, 0.95f, 0.40f, 0.45f)
     }
 
     fun reset() {
@@ -63,6 +104,9 @@ class World {
         vx = 0f; vz = 0f; vy = 0f
         grounded = true; speed = 0f
         camYaw = 0f
+        mode = 0; modeT = 0f
+        offX = 0f; offY = 0f; offZ = 0f
+        queuedClimb = false
     }
 
     private fun groundAt(px: Float, pz: Float, feet: Float): Float {
@@ -97,7 +141,15 @@ class World {
         }
     }
 
+    private fun turnTo(target: Float, rate: Float) {
+        var d = target - yaw
+        while (d > Math.PI) d -= (2 * Math.PI).toFloat()
+        while (d < -Math.PI) d += (2 * Math.PI).toFloat()
+        yaw += d * rate
+    }
+
     fun update(dt: Float) {
+        timeNow += dt
         val cam = FloatArray(2)
         Input.takeCam(cam)
         camYaw -= cam[0]
@@ -105,7 +157,157 @@ class World {
 
         if (Input.reset) {
             Input.reset = false
+            Input.takeJumps()
             reset()
+        }
+
+        val presses = Input.takeJumps()
+        if (mode == 0) updateNormal(dt, presses) else updateSpecial(dt, presses)
+    }
+
+    // ---------------------------------------------------------------- agarrar na parede
+
+    private var bestD = 0f
+    private var bestNx = 0f
+    private var bestNz = 0f
+    private var bestPx = 0f
+    private var bestPz = 0f
+    private var bestTop = 0f
+    private var found = false
+
+    private fun consider(b: Block, nx: Float, nz: Float, plane: Float, lat: Float, lo: Float, hi: Float, fx: Float, fz: Float) {
+        val d = if (nx != 0f) (x - plane) * nx else (z - plane) * nz
+        if (d < 0.15f || d > 1.9f) return
+        if (fx * (-nx) + fz * (-nz) < 0.6f) return
+        if (lat < lo - 0.15f || lat > hi + 0.15f) return
+        if (found && d >= bestD) return
+        val latC = if (hi - lo > 0.6f) lat.coerceIn(lo + 0.25f, hi - 0.25f) else (lo + hi) / 2f
+        found = true
+        bestD = d
+        bestNx = nx
+        bestNz = nz
+        bestTop = b.h
+        if (nx != 0f) {
+            bestPx = plane
+            bestPz = latC
+        } else {
+            bestPx = latC
+            bestPz = plane
+        }
+    }
+
+    private fun tryGrab(): Boolean {
+        if (clipJump == null || clipClimb == null) return false
+        val fx = sin(yaw)
+        val fz = cos(yaw)
+        found = false
+        for (b in blocks) {
+            val rise = b.h - supportY
+            if (rise < 0.9f || rise > 2.4f) continue
+            consider(b, 1f, 0f, b.cx + b.sx / 2f, z, b.cz - b.sz / 2f, b.cz + b.sz / 2f, fx, fz)
+            consider(b, -1f, 0f, b.cx - b.sx / 2f, z, b.cz - b.sz / 2f, b.cz + b.sz / 2f, fx, fz)
+            consider(b, 0f, 1f, b.cz + b.sz / 2f, x, b.cx - b.sx / 2f, b.cx + b.sx / 2f, fx, fz)
+            consider(b, 0f, -1f, b.cz - b.sz / 2f, x, b.cx - b.sx / 2f, b.cx + b.sx / 2f, fx, fz)
+        }
+        if (!found) return false
+
+        fwdX = -bestNx
+        fwdZ = -bestNz
+        yawTarget = atan2(fwdX, fwdZ)
+        topH = bestTop
+        ox = bestPx + bestNx * WALL_Z
+        oz = bestPz + bestNz * WALL_Z
+        oy = bestTop - HANG_Y
+        sx0 = x
+        sy0 = y
+        sz0 = z
+        vx = 0f; vz = 0f; vy = 0f
+        speed = 0f
+        mode = 1
+        modeT = 0f
+        queuedClimb = false
+        offX = 0f; offY = 0f; offZ = 0f
+        return true
+    }
+
+    private fun exitTo(nx: Float, ny: Float, nz: Float) {
+        val dx = nx - x
+        val dz = nz - z
+        val c = cos(yaw)
+        val s = sin(yaw)
+        offX = dx * c - dz * s
+        offY = ny - y
+        offZ = dx * s + dz * c
+        x = nx; y = ny; z = nz
+        vx = 0f; vz = 0f; vy = 0f
+        mode = 0
+        modeT = 0f
+    }
+
+    private fun updateSpecial(dt: Float, presses: Int) {
+        modeT += dt
+        when (mode) {
+            1 -> {
+                val j = clipJump
+                if (j == null) {
+                    mode = 0
+                    return
+                }
+                if (presses > 0 && modeT > 0.25f) queuedClimb = true
+                val t = min(modeT, j.duration)
+                j.hips(t, tmpP)
+                val u = ((tmpP[2] - hz0) / (hzEnd - hz0)).coerceIn(0f, 1f)
+                x = sx0 + (ox - sx0) * u
+                z = sz0 + (oz - sz0) * u
+                y = sy0 + (oy - sy0) * u
+                turnTo(yawTarget, min(1f, dt * 18f))
+                if (modeT >= j.duration) {
+                    x = ox; y = oy; z = oz
+                    yaw = yawTarget
+                    mode = 2
+                    modeT = 0f
+                }
+            }
+            2 -> {
+                x = ox; y = oy; z = oz
+                if (presses > 0 || (queuedClimb && modeT > 0.25f)) {
+                    queuedClimb = false
+                    mode = 3
+                    modeT = 0f
+                } else if (Input.jy < -0.7f && modeT > 0.35f) {
+                    // soltar: joystick para trás
+                    exitTo(ox + fwdX * 0.83f, oy + 0.55f, oz + fwdZ * 0.83f)
+                    grounded = false
+                    vy = -0.5f
+                }
+            }
+            3 -> {
+                x = ox; y = oy; z = oz
+                val c = clipClimb
+                val dur = if (c != null) c.duration else 1f
+                if (modeT >= dur) {
+                    exitTo(ox + fwdX * CLIMB_FWD, topH, oz + fwdZ * CLIMB_FWD)
+                    grounded = true
+                    supportY = topH
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- movimento normal
+
+    private fun updateNormal(dt: Float, presses: Int) {
+        for (i in 0 until presses) {
+            val dbl = timeNow - lastPress < DOUBLE_T
+            lastPress = timeNow
+            if (dbl && tryGrab()) {
+                updateSpecial(0f, 0)
+                return
+            }
+            if (grounded) {
+                vy = JUMP_SPEED
+                grounded = false
+            }
         }
 
         val jx = Input.jx
@@ -133,11 +335,7 @@ class World {
         speed = sqrt(vx * vx + vz * vz)
 
         if (speed > 0.3f) {
-            val target = atan2(vx, vz)
-            var d = target - yaw
-            while (d > Math.PI) d -= (2 * Math.PI).toFloat()
-            while (d < -Math.PI) d += (2 * Math.PI).toFloat()
-            yaw += d * min(1f, dt * 14f)
+            turnTo(atan2(vx, vz), min(1f, dt * 14f))
         }
 
         x += vx * dt
@@ -145,14 +343,6 @@ class World {
         pushOut()
         x = x.coerceIn(-BOUND, BOUND)
         z = z.coerceIn(-BOUND, BOUND)
-
-        if (Input.jump) {
-            Input.jump = false
-            if (grounded) {
-                vy = JUMP_SPEED
-                grounded = false
-            }
-        }
 
         supportY = groundAt(x, z, y)
         if (grounded) {
@@ -183,5 +373,10 @@ class World {
         const val JUMP_SPEED = 5.6f
         const val GRAVITY = 13f
         const val BOUND = 38f
+        const val DOUBLE_T = 0.5f
+        // medidas das animações de parede (feitas para uma borda de ~1,25 m)
+        const val WALL_Z = 1.36f
+        const val HANG_Y = 1.225f
+        const val CLIMB_FWD = 1.551f
     }
 }

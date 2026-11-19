@@ -104,6 +104,19 @@ class Clip(val name: String, val frames: Int, val fps: Float, private val data: 
         }
     }
 
+    /** Só a posição do quadril (barato), usada para sincronizar o movimento do personagem. */
+    fun hips(tIn: Float, p: FloatArray) {
+        val t = tIn.coerceIn(0f, duration)
+        val f = t * fps
+        var i0 = f.toInt()
+        if (i0 > frames - 2) i0 = frames - 2
+        if (i0 < 0) i0 = 0
+        val a = f - i0
+        val s0 = i0 * stride
+        val s1 = s0 + stride
+        for (k in 0 until 3) p[k] = data[s0 + k] + (data[s1 + k] - data[s0 + k]) * a
+    }
+
     companion object {
         fun loadAll(ctx: Context): Map<String, Clip> {
             val bytes = ctx.assets.open("anim.bin").use { it.readBytes() }

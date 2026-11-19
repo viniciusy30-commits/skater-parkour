@@ -21,18 +21,16 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     // modelo e animação
     private lateinit var model: SkinModel
     private lateinit var skeleton: Skeleton
-    private var clipIdle: Clip? = null
-    private var clipRun: Clip? = null
+    // 0 idle, 1 correr, 2 no ar, 3 pular na parede, 4 pendurado, 5 subir
+    private val clipArr = arrayOfNulls<Clip>(6)
+    private val wts = floatArrayOf(1f, 0f, 0f, 0f, 0f, 0f)
+    private val tgt = FloatArray(6)
+    private val tClip = FloatArray(6)
     private lateinit var skinOut: FloatArray
     private val qBlend by lazy { FloatArray(model.boneCount * 4) }
     private val qTmp by lazy { FloatArray(model.boneCount * 4) }
     private val hipsBlend = FloatArray(3)
     private val hipsTmp = FloatArray(3)
-    private var wIdle = 1f
-    private var wRun = 0f
-    private var wAir = 0f
-    private var tIdle = 0f
-    private var tRun = 0f
 
     // GL
     private var progSkin = 0
@@ -73,8 +71,14 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         skeleton = Skeleton(model)
         skinOut = FloatArray(model.boneCount * 12)
         val clips = Clip.loadAll(ctx)
-        clipIdle = clips["idle"]
-        clipRun = clips["run"]
+        clipArr[0] = clips["idle"]
+        clipArr[1] = clips["run"]
+        clipArr[3] = clips["jump"]
+        clipArr[4] = clips["hang"]
+        clipArr[5] = clips["climb"]
+        val cj = clips["jump"]
+        val cc = clips["climb"]
+        if (cj != null && cc != null) world.setClips(cj, cc)
 
         texBody = loadTexture("body.jpg")
         texNormal = loadTexture("normal.png")
@@ -107,7 +111,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
 
         drawWorld()
-        drawShadow()
+        if (world.mode == 0) drawShadow()
         drawCharacter()
     }
 
@@ -116,32 +120,56 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     private fun approach(v: Float, target: Float, k: Float): Float = v + (target - v) * k
 
     private fun updateAnimation(dt: Float) {
-        val run = clipRun ?: return
-        val idle = clipIdle ?: return
+        val run = clipArr[1] ?: return
+        val mode = world.mode
 
-        val air = if (world.grounded) 0f else 1f
-        val runT = (1f - air) * ((world.speed - 0.3f) / 0.9f).coerceIn(0f, 1f)
-        val idleT = (1f - air) * (1f - runT)
-        val k = (dt * 10f).coerceIn(0f, 1f)
-        wAir = approach(wAir, air, k)
-        wRun = approach(wRun, runT, k)
-        wIdle = approach(wIdle, idleT, k)
-        val sum = wAir + wRun + wIdle
-        val nAir = wAir / sum
-        val nRun = wRun / sum
-        val nIdle = wIdle / sum
+        java.util.Arrays.fill(tgt, 0f)
+        if (mode == 0) {
+            val air = if (world.grounded) 0f else 1f
+            val runT = (1f - air) * ((world.speed - 0.3f) / 0.9f).coerceIn(0f, 1f)
+            tgt[2] = air
+            tgt[1] = runT
+            tgt[0] = (1f - air) * (1f - runT)
+        } else {
+            tgt[2 + mode] = 1f
+        }
+        val k = (dt * (if (mode == 0) 10f else 12f)).coerceIn(0f, 1f)
+        var sum = 0f
+        for (i in 0 until 6) {
+            wts[i] = approach(wts[i], tgt[i], k)
+            sum += wts[i]
+        }
+        if (sum < 0.0001f) {
+            wts[0] = 1f
+            sum = 1f
+        }
 
         val rate = (world.speed / 2.66f).coerceIn(0.45f, 1.7f)
-        tRun += dt * rate
-        tIdle += dt
+        tClip[0] += dt
+        tClip[1] += dt * rate
+        if (mode == 1) tClip[3] = world.modeT
+        if (mode == 2) tClip[4] = world.modeT
+        if (mode == 3) tClip[5] = world.modeT
 
         java.util.Arrays.fill(qBlend, 0f)
         java.util.Arrays.fill(hipsBlend, 0f)
         var first = true
         val bones = model.boneCount
 
-        fun accumulate(w: Float) {
-            if (w < 0.001f) return
+        for (i in 0 until 6) {
+            val w = wts[i] / sum
+            if (w < 0.001f) continue
+            val clip: Clip = if (i == 2) run else (clipArr[i] ?: continue)
+            when (i) {
+                2 -> clip.sample(4f / 30f, false, qTmp, hipsTmp)
+                3, 5 -> clip.sample(tClip[i], false, qTmp, hipsTmp)
+                else -> clip.sample(tClip[i], true, qTmp, hipsTmp)
+            }
+            if (i >= 3) {
+                hipsTmp[0] -= world.offX
+                hipsTmp[1] -= world.offY
+                hipsTmp[2] -= world.offZ
+            }
             for (k2 in 0 until 3) hipsBlend[k2] += hipsTmp[k2] * w
             for (b in 0 until bones) {
                 val o = b * 4
@@ -156,19 +184,6 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
                 qBlend[o + 3] += qTmp[o + 3] * w * sg
             }
             first = false
-        }
-
-        if (nIdle >= 0.001f) {
-            idle.sample(tIdle, true, qTmp, hipsTmp)
-            accumulate(nIdle)
-        }
-        if (nRun >= 0.001f) {
-            run.sample(tRun, true, qTmp, hipsTmp)
-            accumulate(nRun)
-        }
-        if (nAir >= 0.001f) {
-            run.sample(4f / 30f, false, qTmp, hipsTmp)
-            accumulate(nAir)
         }
         for (b in 0 until bones) {
             val o = b * 4
@@ -186,9 +201,15 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
 
     private fun updateCamera(dt: Float) {
         val k = (dt * 8f).coerceIn(0f, 1f)
-        camTx += (world.x - camTx) * k
-        camTy += (world.y + 0.85f - camTy) * k
-        camTz += (world.z - camTz) * k
+        // alvo da câmera: quadril do personagem (acompanha a subida e o pulo na parede)
+        val cyw = cos(world.yaw)
+        val syw = sin(world.yaw)
+        val hx = world.x + hipsBlend[0] * cyw + hipsBlend[2] * syw
+        val hz = world.z - hipsBlend[0] * syw + hipsBlend[2] * cyw
+        val hy = world.y + 0.38f + hipsBlend[1]
+        camTx += (hx - camTx) * k
+        camTy += (hy - camTy) * k
+        camTz += (hz - camTz) * k
         val dist = 3.4f
         val cp = cos(world.camPitch)
         val sp = sin(world.camPitch)

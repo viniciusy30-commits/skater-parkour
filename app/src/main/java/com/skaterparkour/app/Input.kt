@@ -4,12 +4,24 @@ package com.skaterparkour.app
 object Input {
     @Volatile var jx = 0f
     @Volatile var jy = 0f
-    @Volatile var jump = false
     @Volatile var reset = false
     @Volatile var sens = 1f
 
+    private var presses = 0
     private var ay = 0f
     private var ap = 0f
+
+    @Synchronized
+    fun pressJump() {
+        presses++
+    }
+
+    @Synchronized
+    fun takeJumps(): Int {
+        val p = presses
+        presses = 0
+        return p
+    }
 
     @Synchronized
     fun addCam(yaw: Float, pitch: Float) {

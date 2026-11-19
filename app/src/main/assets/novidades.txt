@@ -1,3 +1,10 @@
+#id 2026-11-19-b
+#titulo Agarrar na parede e subir
+- Aperte o botão de pular duas vezes rápido de frente para uma parede: o personagem pula e fica agarrado na borda
+- Aperte pular de novo para subir na parede
+- Puxe o joystick para trás enquanto está agarrado para soltar
+- Funciona em paredes de cerca de 1 a 2,4 metros; nova parede de treino perto do início
+
 #id 2026-11-19-a
 #titulo Primeira versão nativa
 - Personagem 3D com animações de corrida e parado
