@@ -21,11 +21,19 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     // modelo e animação
     private lateinit var model: SkinModel
     private lateinit var skeleton: Skeleton
-    // 0 idle, 1 correr, 2 no ar, 3 pular na parede, 4 pendurado, 5 subir
-    private val clipArr = arrayOfNulls<Clip>(6)
-    private val wts = floatArrayOf(1f, 0f, 0f, 0f, 0f, 0f)
-    private val tgt = FloatArray(6)
-    private val tClip = FloatArray(6)
+    // 0 idle, 1 correr, 2 (livre), 3 pular na parede, 4 pendurado, 5 subir,
+    // 6 andar, 7 sprint, 8 ar subindo, 9 ar descendo, 10 ação (rolamento), 11 pouso
+    private val clipArr = arrayOfNulls<Clip>(12)
+    private val wts = FloatArray(12).also { it[0] = 1f }
+    private val tgt = FloatArray(12)
+    private val tClip = FloatArray(12)
+    private var gaitPhase = 0f
+    private var landClip: Clip? = null
+    private var landT = 0f
+    private var landLight: Clip? = null
+    private var landHeavy: Clip? = null
+    // todas as animações do pacote (para as próximas ações do jogo)
+    var allClips: Map<String, Clip> = emptyMap()
     private lateinit var skinOut: FloatArray
     private val qBlend by lazy { FloatArray(model.boneCount * 4) }
     private val qTmp by lazy { FloatArray(model.boneCount * 4) }
@@ -76,6 +84,20 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         clipArr[3] = clips["jump"]
         clipArr[4] = clips["hang"]
         clipArr[5] = clips["climb"]
+        val all = Clip.loadPacked(ctx)
+        allClips = all
+        clipArr[6] = all["A_Walk_IP"]
+        clipArr[7] = all["A_Sprint_IP"]
+        clipArr[8] = all["A_Fly_Up"]
+        clipArr[9] = all["A_Fly_Down"]
+        landLight = all["A_Landing_Down_Light"]
+        landHeavy = all["A_Landing_Down"]
+        world.setRolls(
+            listOfNotNull(
+                all["A_Landing_Roll_A_L"], all["A_Landing_Roll_A_R"],
+                all["A_Landing_Roll_B_L"], all["A_Landing_Roll_B_R"]
+            )
+        )
         val cj = clips["jump"]
         val cc = clips["climb"]
         if (cj != null && cc != null) world.setClips(cj, cc)
@@ -111,7 +133,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
 
         drawWorld()
-        if (world.mode == 0) drawShadow()
+        if (world.mode == 0 || world.mode == 4) drawShadow()
         drawCharacter()
     }
 
@@ -123,19 +145,54 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         val run = clipArr[1] ?: return
         val mode = world.mode
 
+        // pouso: escolhe a animação leve ou pesada (o rolamento é uma ação própria do mundo)
+        if (world.landEvent) {
+            world.landEvent = false
+            if (world.mode != 4 && world.landVy < -2.5f) {
+                landClip = if (world.landVy < -5.8f) landHeavy else landLight
+                landT = 0f
+            }
+        }
+        var landW = 0f
+        val lc = landClip
+        if (lc != null) {
+            landT += dt
+            if (landT >= lc.duration || mode != 0) {
+                landClip = null
+            } else {
+                val still = (1f - (world.speed - 0.4f) / 1.6f).coerceIn(0f, 1f)
+                landW = (0.3f + 0.7f * still) * ((lc.duration - landT) / 0.12f).coerceIn(0f, 1f)
+            }
+        }
+
         java.util.Arrays.fill(tgt, 0f)
         if (mode == 0) {
             val air = if (world.grounded) 0f else 1f
-            val runT = (1f - air) * ((world.speed - 0.3f) / 0.9f).coerceIn(0f, 1f)
-            tgt[2] = air
-            tgt[1] = runT
-            tgt[0] = (1f - air) * (1f - runT)
+            val g = 1f - air
+            val s = world.speed
+            val mv = ((s - 0.2f) / 0.6f).coerceIn(0f, 1f)
+            val rs = ((s - 1.2f) / 1.2f).coerceIn(0f, 1f)
+            val ss = ((s - 2.8f) / 0.9f).coerceIn(0f, 1f)
+            tgt[0] = g * (1f - mv)
+            tgt[6] = g * mv * (1f - rs)
+            tgt[1] = g * mv * rs * (1f - ss)
+            tgt[7] = g * mv * rs * ss
+            val up = ((world.vy + 1f) / 3f).coerceIn(0f, 1f)
+            tgt[8] = air * up
+            tgt[9] = air * (1f - up)
+        } else if (mode == 4) {
+            tgt[10] = 1f
         } else {
             tgt[2 + mode] = 1f
         }
+        if (landW > 0f) {
+            for (i in 0 until 10) tgt[i] *= (1f - landW)
+            tgt[11] = landW
+        }
+
         val k = (dt * (if (mode == 0) 10f else 12f)).coerceIn(0f, 1f)
         var sum = 0f
-        for (i in 0 until 6) {
+        for (i in 0 until wts.size) {
             wts[i] = approach(wts[i], tgt[i], k)
             sum += wts[i]
         }
@@ -144,31 +201,52 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
             sum = 1f
         }
 
-        val rate = (world.speed / 2.56f).coerceIn(0.45f, 1.7f)
+        // andar, correr e sprint dividem a mesma fase de passo (distância por ciclo de cada um)
         tClip[0] += dt
-        tClip[1] += dt * rate
+        tClip[8] += dt
+        tClip[9] += dt
+        val wsum = wts[6] + wts[1] + wts[7]
+        if (wsum > 0.001f) {
+            val stride = (wts[6] * 0.899f + wts[1] * 1.709f + wts[7] * 2.132f) / wsum
+            gaitPhase += dt * world.speed / stride
+            gaitPhase -= Math.floor(gaitPhase.toDouble()).toFloat()
+        }
+        tClip[6] = gaitPhase * (clipArr[6]?.duration ?: 0f)
+        tClip[1] = gaitPhase * run.duration
+        tClip[7] = gaitPhase * (clipArr[7]?.duration ?: 0f)
         if (mode == 1) tClip[3] = world.clipT
         if (mode == 2) tClip[4] = world.modeT
         if (mode == 3) tClip[5] = world.modeT
+        if (mode == 4) tClip[10] = world.modeT
+        tClip[11] = landT
 
         java.util.Arrays.fill(qBlend, 0f)
         java.util.Arrays.fill(hipsBlend, 0f)
         var first = true
         val bones = model.boneCount
 
-        for (i in 0 until 6) {
+        for (i in 0 until wts.size) {
             val w = wts[i] / sum
             if (w < 0.001f) continue
-            val clip: Clip = if (i == 2) run else (clipArr[i] ?: continue)
+            val clip: Clip? = when (i) {
+                10 -> world.actionClip
+                11 -> landClip
+                else -> clipArr[i]
+            }
+            if (clip == null) continue
             when (i) {
-                2 -> clip.sample(4f / 30f, false, qTmp, hipsTmp)
-                3, 5 -> clip.sample(tClip[i], false, qTmp, hipsTmp)
+                3, 5, 10, 11 -> clip.sample(tClip[i], false, qTmp, hipsTmp)
                 else -> clip.sample(tClip[i], true, qTmp, hipsTmp)
             }
-            if (i >= 3) {
+            if (i in 3..5) {
                 hipsTmp[0] -= world.offX
                 hipsTmp[1] -= world.offY
                 hipsTmp[2] -= world.offZ
+            }
+            if (i == 10) {
+                // o deslocamento do rolamento vem do mundo; aqui o corpo fica no lugar
+                hipsTmp[0] = world.apx0
+                hipsTmp[2] = world.apz0
             }
             for (k2 in 0 until 3) hipsBlend[k2] += hipsTmp[k2] * w
             for (b in 0 until bones) {

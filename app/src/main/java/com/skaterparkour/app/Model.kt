@@ -118,6 +118,44 @@ class Clip(val name: String, val frames: Int, val fps: Float, private val data: 
     }
 
     companion object {
+        /** anim_all.bin: todas as animações do pacote (quaternions em 16 bits). */
+        fun loadPacked(ctx: Context): Map<String, Clip> {
+            val map = HashMap<String, Clip>()
+            try {
+                val bytes = ctx.assets.open("anim_all.bin").use { it.readBytes() }
+                val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+                if (bb.int != 0x50414E41) return map
+                val count = bb.int
+                val bones = bb.int
+                val fps = bb.int.toFloat()
+                val stride = 3 + bones * 4
+                for (c in 0 until count) {
+                    val nl = bb.int
+                    val nb = ByteArray(nl)
+                    bb.get(nb)
+                    val name = String(nb, Charsets.UTF_8)
+                    val frames = bb.int
+                    val pos = readFloats(bb, frames * 3)
+                    val sh = ShortArray(frames * bones * 4)
+                    bb.asShortBuffer().get(sh)
+                    bb.position(bb.position() + sh.size * 2)
+                    val data = FloatArray(frames * stride)
+                    for (f in 0 until frames) {
+                        val o = f * stride
+                        data[o] = pos[f * 3]
+                        data[o + 1] = pos[f * 3 + 1]
+                        data[o + 2] = pos[f * 3 + 2]
+                        val so = f * bones * 4
+                        for (k in 0 until bones * 4) data[o + 3 + k] = sh[so + k] / 32767f
+                    }
+                    map[name] = Clip(name, frames, fps, data, bones)
+                }
+            } catch (e: Exception) {
+                // sem o pacote extra o jogo continua só com as animações básicas
+            }
+            return map
+        }
+
         fun loadAll(ctx: Context): Map<String, Clip> {
             val bytes = ctx.assets.open("anim.bin").use { it.readBytes() }
             val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)

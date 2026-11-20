@@ -35,6 +35,17 @@ class World {
     var offY = 0f
     var offZ = 0f
 
+    // pouso e ação com movimento da própria animação (rolamento)
+    var landVy = 0f
+    var landEvent = false
+    var actionClip: Clip? = null
+    var apx0 = 0f
+    var apz0 = 0f
+    private val rollClips = ArrayList<Clip>()
+    private var rollIdx = 0
+    private var ax0 = 0f
+    private var az0 = 0f
+
     private var clipJump: Clip? = null
     private var clipClimb: Clip? = null
     private var hz0 = 0f
@@ -76,6 +87,29 @@ class World {
         jump.hips(jump.duration, tmpP)
         hzEnd = tmpP[2]
         if (hzEnd - hz0 < 0.1f) hzEnd = hz0 + 0.1f
+    }
+
+    fun setRolls(list: List<Clip>) {
+        rollClips.clear()
+        rollClips.addAll(list)
+    }
+
+    private fun onLanded() {
+        landEvent = true
+        if (landVy < -ROLL_VY && speed > 1.5f && rollClips.isNotEmpty()) {
+            val c = rollClips[rollIdx % rollClips.size]
+            rollIdx++
+            actionClip = c
+            c.hips(0f, tmpP)
+            apx0 = tmpP[0]
+            apz0 = tmpP[2]
+            ax0 = x
+            az0 = z
+            vx = 0f; vz = 0f
+            mode = 4
+            modeT = 0f
+            offX = 0f; offY = 0f; offZ = 0f
+        }
     }
 
     private fun add(cx: Float, cz: Float, sx: Float, sz: Float, h: Float, r: Float, g: Float, b: Float) {
@@ -308,6 +342,34 @@ class World {
                     vy = -0.5f
                 }
             }
+            4 -> {
+                val c = actionClip
+                if (c == null) {
+                    mode = 0
+                    return
+                }
+                val t = min(modeT, c.duration)
+                c.hips(t, tmpP)
+                val dx = tmpP[0] - apx0
+                val dz = tmpP[2] - apz0
+                val cy = cos(yaw)
+                val sy = sin(yaw)
+                x = ax0 + dx * cy + dz * sy
+                z = az0 - dx * sy + dz * cy
+                pushOut()
+                x = x.coerceIn(-BOUND, BOUND)
+                z = z.coerceIn(-BOUND, BOUND)
+                supportY = groundAt(x, z, y)
+                y = supportY
+                if (modeT >= c.duration) {
+                    vx = sin(yaw) * 2.2f
+                    vz = cos(yaw) * 2.2f
+                    speed = 2.2f
+                    grounded = true
+                    mode = 0
+                    modeT = 0f
+                }
+            }
             3 -> {
                 val c = clipClimb
                 val dur = if (c != null) c.duration else 1f
@@ -387,9 +449,11 @@ class World {
             vy -= GRAVITY * dt
             val ny = y + vy * dt
             if (vy <= 0f && ny <= supportY) {
+                landVy = vy
                 y = supportY
                 vy = 0f
                 grounded = true
+                onLanded()
             } else {
                 y = ny
             }
@@ -409,5 +473,7 @@ class World {
         const val CLIMB_FWD = 0.9791f
         const val CLIMB_RAISE = 0.0033f
         const val GRAB_MAX_DIST = 0.8f
+        // queda mais rápida que isso (cerca de 1,5 m) e correndo: o personagem rola ao cair
+        const val ROLL_VY = 5.8f
     }
 }

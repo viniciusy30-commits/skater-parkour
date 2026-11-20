@@ -1,3 +1,11 @@
+#id 2026-11-20-b
+#titulo Todas as animações dentro do jogo
+- Pacote com as 255 animações do personagem incluído no app
+- Agora ele anda, corre e faz sprint conforme você empurra o joystick, com passos sincronizados
+- Pulo com pose de subida e de descida no ar
+- Aterrissagem suave ou pesada conforme a altura da queda
+- Caindo de uma altura grande em movimento, o personagem rola no chão
+
 #id 2026-11-20-a
 #titulo Personagem novo e animações melhores
 - Personagem trocado por um modelo mais detalhado, com esqueleto mais completo (80 ossos)
