@@ -40,6 +40,20 @@ class World {
     var landEvent = false
     var jumpEvent = false
     var jumpSpeed = 0f
+    // tempo de agachada antes de sair do chão (a animação de decolagem sincroniza com ele)
+    var jumpWind = 0f
+    private var windT = -1f
+    // velocidade desejada pelo joystick e giro do corpo (para partida, parada e curvas)
+    var targetSpeed = 0f
+    var yawRate = 0f
+    // meia-volta correndo (turnKind 0) e giro parado (turnKind 1): o mundo vira o corpo na hora e a animação compensa
+    var turnEvent = false
+    var turnKind = 0
+    var turnD = 0f
+    var turnSpeed = 0f
+    var turnLockTotal = 0.5f
+    private var turnLock = 0f
+    private var prevTsp = 0f
     var actionClip: Clip? = null
     var apx0 = 0f
     var apz0 = 0f
@@ -150,6 +164,9 @@ class World {
         mode = 0; modeT = 0f
         offX = 0f; offY = 0f; offZ = 0f
         queuedClimb = false
+        windT = -1f
+        targetSpeed = 0f; yawRate = 0f
+        turnLock = 0f; turnEvent = false
     }
 
     private fun groundAt(px: Float, pz: Float, feet: Float): Float {
@@ -205,7 +222,15 @@ class World {
         }
 
         val presses = Input.takeJumps()
-        if (mode == 0) updateNormal(dt, presses) else updateSpecial(dt, presses)
+        if (mode == 0) {
+            updateNormal(dt, presses)
+        } else {
+            windT = -1f
+            targetSpeed = 0f
+            yawRate = 0f
+            turnLock = 0f
+            updateSpecial(dt, presses)
+        }
     }
 
     // ---------------------------------------------------------------- agarrar na parede
@@ -397,11 +422,22 @@ class World {
                 updateSpecial(0f, 0)
                 return
             }
-            if (grounded) {
-                vy = JUMP_SPEED
-                grounded = false
+            if (grounded && windT < 0f) {
+                // agacha primeiro; o corpo só sai do chão quando a agachada termina
                 jumpEvent = true
                 jumpSpeed = speed
+                jumpWind = if (speed > 1.5f) WIND_RUN else WIND_STAND
+                windT = 0f
+            }
+        }
+        if (windT >= 0f) {
+            windT += dt
+            if (!grounded) {
+                windT = -1f
+            } else if (windT >= jumpWind) {
+                vy = JUMP_SPEED
+                grounded = false
+                windT = -1f
             }
         }
 
@@ -424,13 +460,49 @@ class World {
                 dvz = dz * MAX_SPEED * mag
             }
         }
-        val k = min(1f, dt * (if (grounded) 12f else 4f))
+        targetSpeed = sqrt(dvx * dvx + dvz * dvz)
+        val prevT = prevTsp
+        prevTsp = targetSpeed
+        if (turnLock > 0f) turnLock -= dt
+        if (grounded && windT < 0f && turnLock <= 0f && targetSpeed > 0.5f) {
+            val tyaw = atan2(dvx, dvz)
+            var d = tyaw - yaw
+            while (d > Math.PI) d -= (2 * Math.PI).toFloat()
+            while (d < -Math.PI) d += (2 * Math.PI).toFloat()
+            val ad = abs(d)
+            if (speed > 2.0f && targetSpeed > 1.5f && ad > 2.45f) {
+                // meia-volta correndo
+                turnEvent = true; turnKind = 0; turnD = d; turnSpeed = speed
+                turnLockTotal = if (speed > 3.2f) 0.73f else 0.6f
+                turnLock = turnLockTotal
+                yaw = tyaw
+            } else if (speed < 0.45f && prevT < 0.25f && ad > 0.6f) {
+                // giro no lugar antes de sair andando
+                turnEvent = true; turnKind = 1; turnD = d; turnSpeed = speed
+                turnLockTotal = if (ad >= 2.36f) 0.46f else if (ad >= 1.18f) 0.37f else 0.3f
+                turnLock = turnLockTotal
+                yaw = tyaw
+            }
+        }
+        if (turnLock > 0f && turnKind == 1) {
+            dvx = 0f
+            dvz = 0f
+        }
+        // sem joystick no chão: desliza um pouco (acompanha a animação de parada)
+        val k = min(1f, dt * (if (!grounded) 4f else if (targetSpeed < 0.1f) 7f else 12f))
         vx += (dvx - vx) * k
         vz += (dvz - vz) * k
         speed = sqrt(vx * vx + vz * vz)
 
-        if (speed > 0.3f) {
+        if (speed > 0.3f && turnLock <= 0f) {
+            val y0 = yaw
             turnTo(atan2(vx, vz), min(1f, dt * 14f))
+            var dy = yaw - y0
+            while (dy > Math.PI) dy -= (2 * Math.PI).toFloat()
+            while (dy < -Math.PI) dy += (2 * Math.PI).toFloat()
+            yawRate = if (dt > 0.0001f) dy / dt else 0f
+        } else {
+            yawRate = 0f
         }
 
         x += vx * dt
@@ -468,6 +540,8 @@ class World {
     companion object {
         const val MAX_SPEED = 3.8f
         const val JUMP_SPEED = 5.6f
+        const val WIND_STAND = 0.2f
+        const val WIND_RUN = 0.09f
         const val GRAVITY = 13f
         const val BOUND = 38f
         const val DOUBLE_T = 0.5f

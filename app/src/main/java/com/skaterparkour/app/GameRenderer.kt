@@ -22,22 +22,69 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     private lateinit var model: SkinModel
     private lateinit var skeleton: Skeleton
     // 0 idle, 1 correr, 2 (livre), 3 pular na parede, 4 pendurado, 5 subir,
-    // 6 andar, 7 sprint, 8 ar subindo, 9 ar descendo, 10 ação (rolamento), 11 pouso, 12 decolagem
-    private val clipArr = arrayOfNulls<Clip>(13)
-    private val wts = FloatArray(13).also { it[0] = 1f }
-    private val tgt = FloatArray(13)
-    private val tClip = FloatArray(13)
-    private var jumpClip: Clip? = null
-    private var jumpT = 0f
+    // 6 andar, 7 sprint, 8 ar subindo, 9 ar descendo, 10 ação (rolamento), 11 pouso,
+    // 12 decolagem, 13 ar para frente, 14 partida/parada, 15..20 curvas (andar, correr, sprint; esq/dir),
+    // 21 meia-volta / giro no lugar
+    private val NC = 22
+    private val clipArr = arrayOfNulls<Clip>(NC)
+    private val wts = FloatArray(NC).also { it[0] = 1f }
+    private val tgt = FloatArray(NC)
+    private val fw = FloatArray(NC)
+    private val tClip = FloatArray(NC)
+    private val gaitIdx = intArrayOf(6, 1, 7, 15, 16, 17, 18, 19, 20)
+
+    // decolagem
+    private var takeClip: Clip? = null
+    private var takeT = 0f
+    private var takeAge = 0f
+    private var takeRate = 1f
     private var jumpUpStart: Clip? = null
     private var jumpFrontL: Clip? = null
     private var jumpFrontR: Clip? = null
-    private val hipsJ = FloatArray(3)
-    private var gaitPhase = 0f
+    // pouso (começa antes de tocar o chão, para os pés encostarem junto com a animação)
     private var landClip: Clip? = null
     private var landT = 0f
+    private var landAge = 0f
+    private var landContact = 0f
+    private var landStanding = true
+    private var nextContact = 0f
+    private var nextStanding = true
     private var landLight: Clip? = null
     private var landHeavy: Clip? = null
+    private var jumpFinish: Clip? = null
+    private var jumpUpFinish: Clip? = null
+    // meia-volta correndo e giro no lugar
+    private var turnClip: Clip? = null
+    private var turnT = 0f
+    private var turnRate = 1f
+    private var turnD = 0f
+    private var turnEnd = 0f
+    private var run180L: Clip? = null
+    private var run180R: Clip? = null
+    private var sprint180L: Clip? = null
+    private var sprint180R: Clip? = null
+    private var rot45L: Clip? = null
+    private var rot45R: Clip? = null
+    private var rot90L: Clip? = null
+    private var rot90R: Clip? = null
+    private var rot180L: Clip? = null
+    private var rot180R: Clip? = null
+    private val rootBone by lazy { model.boneIndex("root").let { if (it < 0) 0 else it } }
+    // partida e parada (andar, correr, sprint)
+    private var gaitClip: Clip? = null
+    private var gaitT = 0f
+    private var gaitAge = 0f
+    private var gaitFade = 1f
+    private var gaitStop = false
+    private var startArmed = true
+    private var prevTarget = 0f
+    private var walkStart: Clip? = null
+    private var walkStop: Clip? = null
+    private var runStart: Clip? = null
+    private var runStop: Clip? = null
+    private var sprintStart: Clip? = null
+    private var sprintStop: Clip? = null
+    private var gaitPhase = 0f
     // todas as animações do pacote (para as próximas ações do jogo)
     var allClips: Map<String, Clip> = emptyMap()
     private lateinit var skinOut: FloatArray
@@ -96,11 +143,36 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         clipArr[7] = all["A_Sprint_IP"]
         clipArr[8] = all["A_Fly_Up"]
         clipArr[9] = all["A_Fly_Down"]
+        clipArr[13] = all["A_Fly_Front"]
+        clipArr[15] = all["A_Walk_Arc_L_IP"]
+        clipArr[16] = all["A_Walk_Arc_R_IP"]
+        clipArr[17] = all["A_Run_Arc_L_IP"]
+        clipArr[18] = all["A_Run_Arc_R_IP"]
+        clipArr[19] = all["A_Sprint_Arc_L_IP"]
+        clipArr[20] = all["A_Sprint_Arc_R_IP"]
         jumpUpStart = all["A_JumpUp_Start"]
         jumpFrontL = all["A_Jump_Front_L_Start"]
         jumpFrontR = all["A_Jump_Front_R_Start"]
         landLight = all["A_Landing_Down_Light"]
         landHeavy = all["A_Landing_Down"]
+        jumpFinish = all["A_Jump_Finish"]
+        jumpUpFinish = all["A_JumpUp_Finish"]
+        run180L = all["A_Run_180_L"]
+        run180R = all["A_Run_180_R"]
+        sprint180L = all["A_Sprint_180_L"]
+        sprint180R = all["A_Sprint_180_R"]
+        rot45L = all["A_Rotate45_L"]
+        rot45R = all["A_Rotate45_R"]
+        rot90L = all["A_Rotate90_L"]
+        rot90R = all["A_Rotate90_R"]
+        rot180L = all["A_Rotate180_L"]
+        rot180R = all["A_Rotate180_R"]
+        walkStart = all["A_Walk_Start"]
+        walkStop = all["A_Walk_Stop"]
+        runStart = all["A_Run_Start"]
+        runStop = all["A_Run_Stop"]
+        sprintStart = all["A_Sprint_Start"]
+        sprintStop = all["A_Sprint_Stop"]
         world.setRolls(
             listOfNotNull(
                 all["A_Landing_Roll_A_L"], all["A_Landing_Roll_A_R"],
@@ -150,86 +222,260 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
 
     private fun approach(v: Float, target: Float, k: Float): Float = v + (target - v) * k
 
+    /** Pé que estará apoiado no chão daqui a pouco (fase do passo: esquerdo perto de 0, direito perto de 0,5). */
+    private fun leftPlanted(p: Float): Boolean = p < 0.25f || p >= 0.7f
+
+    /** Achata a subida do quadril das poses de ar: a altura do pulo já vem da física. */
+    private fun airY(y: Float): Float = if (y > 0.56f) 0.56f + (y - 0.56f) * 0.25f else y
+
+    private fun startTurn() {
+        val d = world.turnD
+        val left = d > 0f
+        val ad = Math.abs(d)
+        val c: Clip?
+        var re: Float
+        if (world.turnKind == 0) {
+            c = if (world.turnSpeed > 3.2f) (if (left) sprint180L else sprint180R) else (if (left) run180L else run180R)
+            re = Math.PI.toFloat()
+        } else if (ad >= 2.36f) {
+            c = if (left) rot180L else rot180R
+            re = Math.PI.toFloat()
+        } else if (ad >= 1.18f) {
+            c = if (left) rot90L else rot90R
+            re = (Math.PI / 2).toFloat()
+        } else {
+            c = if (left) rot45L else rot45R
+            re = (Math.PI / 4).toFloat()
+        }
+        if (!left) re = -re
+        turnClip = c
+        turnT = 0f
+        turnD = d
+        turnEnd = re
+        turnRate = if (c != null && world.turnLockTotal > 0.05f) c.duration / world.turnLockTotal else 1f
+        gaitClip = null
+    }
+
+    private fun startTakeoff() {
+        landClip = null
+        gaitClip = null
+        turnClip = null
+        val running = world.jumpSpeed > 1.5f
+        val c: Clip?
+        val startT: Float
+        val launchT: Float
+        if (running) {
+            var pp = gaitPhase + 0.2f * (world.jumpSpeed / 3.8f)
+            pp -= Math.floor(pp.toDouble()).toFloat()
+            c = if (leftPlanted(pp)) jumpFrontL else jumpFrontR
+            startT = 1f / 30f
+            launchT = 5f / 30f
+        } else {
+            c = jumpUpStart
+            startT = 3f / 30f
+            launchT = 13f / 30f
+        }
+        takeClip = c
+        takeT = startT
+        takeAge = 0f
+        takeRate = if (world.jumpWind > 0.01f) (launchT - startT) / world.jumpWind else 1f
+    }
+
+    /** Escolhe a animação de pouso pela velocidade de impacto; devolve null se não precisa de nenhuma. */
+    private fun chooseLanding(vImp: Float, speed: Float): Clip? {
+        if (vImp < 2.2f) return null
+        if (vImp > World.ROLL_VY && speed > 1.5f) return null // o mundo faz o rolamento
+        nextStanding = speed <= 1.2f
+        nextContact = 0f
+        if (vImp > World.ROLL_VY) return landHeavy
+        if (speed > 1.2f) {
+            if (vImp < 3.0f) return null
+            return jumpFinish
+        }
+        if (vImp >= 4.2f) {
+            nextContact = 5f / 30f
+            return jumpUpFinish
+        }
+        return landLight
+    }
+
     private fun updateAnimation(dt: Float) {
         val run = clipArr[1] ?: return
         val mode = world.mode
+        val grounded = world.grounded
 
-        // pouso: escolhe a animação leve ou pesada (o rolamento é uma ação própria do mundo)
-        if (world.landEvent) {
-            world.landEvent = false
-            if (world.mode != 4 && world.landVy < -2.5f) {
-                landClip = if (world.landVy < -5.8f) landHeavy else landLight
-                landT = 0f
-            }
-        }
-        // decolagem: salto para frente se estiver correndo, vertical se estiver parado
+        // ---- decolagem: agacha, sai do chão e abre o corpo (vertical parado, passada correndo)
         if (world.jumpEvent) {
             world.jumpEvent = false
-            if (world.mode == 0) {
-                if (world.jumpSpeed > 1.5f) {
-                    jumpClip = if (gaitPhase < 0.5f) jumpFrontL else jumpFrontR
-                    jumpT = 0f
-                } else {
-                    jumpClip = jumpUpStart
-                    jumpT = 12f / 30f
+            if (mode == 0) startTakeoff()
+        }
+
+        if (world.turnEvent) {
+            world.turnEvent = false
+            if (mode == 0 && grounded) startTurn()
+        }
+
+        // ---- pouso: começa um pouco antes de tocar o chão
+        if (mode == 0 && !grounded && landClip == null) {
+            val h = (world.y - world.supportY).coerceAtLeast(0f)
+            val disc = world.vy * world.vy + 2f * World.GRAVITY * h
+            val sq = Math.sqrt(disc.toDouble()).toFloat()
+            val tl = (world.vy + sq) / World.GRAVITY
+            if (world.vy < 1f && tl > 0f) {
+                val c = chooseLanding(sq, world.speed)
+                if (c != null && tl <= Math.max(nextContact, 0.07f)) {
+                    landClip = c
+                    landContact = nextContact
+                    landStanding = nextStanding
+                    landT = nextContact - tl
+                    landAge = 0f
+                    takeClip = null
+                    gaitClip = null
+                    turnClip = null
                 }
             }
         }
-        var jumpW = 0f
-        val jc = jumpClip
-        if (jc != null) {
-            jumpT += dt
-            if (jumpT >= jc.duration || mode != 0 || world.grounded) {
-                jumpClip = null
-            } else {
-                jumpW = ((jc.duration - jumpT) / 0.15f).coerceIn(0f, 1f)
-            }
-        }
-        var landW = 0f
-        val lc = landClip
-        if (lc != null) {
-            landT += dt
-            if (landT >= lc.duration || mode != 0) {
-                landClip = null
-            } else {
-                val still = (1f - (world.speed - 0.4f) / 1.6f).coerceIn(0f, 1f)
-                landW = (0.3f + 0.7f * still) * ((lc.duration - landT) / 0.12f).coerceIn(0f, 1f)
+        if (world.landEvent) {
+            world.landEvent = false
+            // se a previsão não pegou (queda repentina), usa o pouso na hora
+            if (mode == 0 && landClip == null && world.landVy < -2.5f) {
+                val c = chooseLanding(-world.landVy, world.speed)
+                if (c != null) {
+                    landClip = c
+                    landContact = nextContact
+                    landStanding = nextStanding
+                    landT = nextContact
+                    landAge = 0f
+                    takeClip = null
+                    gaitClip = null
+                }
             }
         }
 
+        var wL = 0f
+        val lc = landClip
+        if (lc != null) {
+            landAge += dt
+            landT += dt
+            if (!grounded) landT = Math.min(landT, landContact)
+            if (landT >= lc.duration || mode != 0) {
+                landClip = null
+            } else {
+                val fin = (landAge / 0.08f).coerceIn(0f, 1f)
+                val fout = ((lc.duration - landT) / 0.14f).coerceIn(0f, 1f)
+                wL = Math.min(fin, fout)
+                if (landStanding) {
+                    val still = (1f - (world.speed - 0.4f) / 1.6f).coerceIn(0f, 1f)
+                    wL *= 0.3f + 0.7f * still
+                }
+            }
+        }
+
+        var wT = 0f
+        val tc = takeClip
+        if (tc != null) {
+            takeAge += dt
+            takeT += dt * (if (grounded) takeRate else 1f)
+            if (takeT >= tc.duration || mode != 0 || landClip != null) {
+                takeClip = null
+            } else {
+                val fin = (takeAge / 0.07f).coerceIn(0f, 1f)
+                val fout = ((tc.duration - takeT) / 0.14f).coerceIn(0f, 1f)
+                wT = Math.min(fin, fout)
+            }
+        }
+
+        var wN = 0f
+        val nc = turnClip
+        if (nc != null) {
+            turnT += dt * turnRate
+            if (turnT >= nc.duration || mode != 0 || !grounded || takeClip != null || landClip != null) {
+                turnClip = null
+            } else {
+                // entra com peso total (o corpo já começa virado para o lado antigo) e some no fim
+                wN = ((nc.duration - turnT) / 0.14f).coerceIn(0f, 1f)
+            }
+        }
+
+        // ---- partida e parada de andar/correr/sprint
+        val tsp = world.targetSpeed
+        if (tsp < 0.25f) startArmed = true
+        if (mode != 0 || !grounded || takeClip != null || landClip != null || turnClip != null) gaitClip = null
+        if (gaitClip == null && mode == 0 && grounded && takeClip == null && landClip == null && turnClip == null) {
+            if (startArmed && world.speed < 0.45f && tsp > 0.5f) {
+                startArmed = false
+                gaitClip = if (tsp < 1.7f) walkStart else if (tsp < 3.2f) runStart else sprintStart
+                gaitStop = false
+                gaitT = 0f; gaitAge = 0f; gaitFade = 1f
+            } else if (prevTarget >= 0.25f && tsp < 0.25f && world.speed > 0.9f) {
+                val sp = world.speed
+                gaitClip = if (sp < 1.8f) walkStop else if (sp < 3.2f) runStop else sprintStop
+                gaitStop = true
+                gaitT = 0f; gaitAge = 0f; gaitFade = 1f
+            }
+        }
+        prevTarget = tsp
+        var wG = 0f
+        var holdPhase = false
+        val gc = gaitClip
+        if (gc != null) {
+            gaitAge += dt
+            gaitT += dt
+            // se o jogador muda de ideia, a animação some rápido
+            val cancel = if (gaitStop) tsp > 0.5f else tsp < 0.25f
+            gaitFade = if (cancel) gaitFade - dt / 0.12f else Math.min(1f, gaitFade + dt / 0.12f)
+            if (gaitT >= gc.duration || gaitFade <= 0f) {
+                gaitClip = null
+            } else {
+                val fin = (gaitAge / 0.05f).coerceIn(0f, 1f)
+                val fout = ((gc.duration - gaitT) / 0.14f).coerceIn(0f, 1f)
+                wG = Math.min(fin, fout) * gaitFade
+                // a partida termina no passo da corrida (fase 0): o ciclo começa dali
+                if (!gaitStop && gc.duration - gaitT > 0.14f) holdPhase = true
+            }
+        }
+        // o pouso correndo termina na mesma pose (pé direito à frente)
+        if (landClip != null && landClip === jumpFinish && jumpFinish!!.duration - landT > 0.16f) holdPhase = true
+
         java.util.Arrays.fill(tgt, 0f)
         if (mode == 0) {
-            val air = if (world.grounded) 0f else 1f
+            val air = if (grounded) 0f else 1f
             val g = 1f - air
             val s = world.speed
             val mv = ((s - 0.2f) / 0.6f).coerceIn(0f, 1f)
             val rs = ((s - 1.2f) / 1.2f).coerceIn(0f, 1f)
             val ss = ((s - 2.8f) / 0.9f).coerceIn(0f, 1f)
+            val arc = (Math.abs(world.yawRate) / 2.5f).coerceIn(0f, 1f)
+            val aL = if (world.yawRate > 0f) arc else 0f
+            val aR = if (world.yawRate < 0f) arc else 0f
+            val wk = g * mv * (1f - rs)
+            val rn = g * mv * rs * (1f - ss)
+            val sp = g * mv * rs * ss
             tgt[0] = g * (1f - mv)
-            tgt[6] = g * mv * (1f - rs)
-            tgt[1] = g * mv * rs * (1f - ss)
-            tgt[7] = g * mv * rs * ss
+            tgt[6] = wk * (1f - arc)
+            tgt[1] = rn * (1f - arc)
+            tgt[7] = sp * (1f - arc)
+            tgt[15] = wk * aL
+            tgt[16] = wk * aR
+            tgt[17] = rn * aL
+            tgt[18] = rn * aR
+            tgt[19] = sp * aL
+            tgt[20] = sp * aR
             val up = ((world.vy + 1f) / 3f).coerceIn(0f, 1f)
-            tgt[8] = air * up
-            tgt[9] = air * (1f - up)
+            val fm = ((s - 1f) / 1.5f).coerceIn(0f, 1f)
+            tgt[8] = air * up * (1f - fm)
+            tgt[13] = air * fm
+            tgt[9] = air * (1f - up) * (1f - fm)
         } else if (mode == 4) {
             tgt[10] = 1f
         } else {
             tgt[2 + mode] = 1f
         }
-        if (landW > 0f) {
-            for (i in 0 until 10) tgt[i] *= (1f - landW)
-            tgt[11] = landW
-        }
 
-        if (jumpW > 0f) {
-            for (i in 0 until 10) tgt[i] *= (1f - jumpW)
-            tgt[12] = jumpW
-        }
-
-        val k = (dt * (if (mode == 0) 10f else 12f)).coerceIn(0f, 1f)
+        val k = (dt * (if (mode == 0) (if (landClip != null) 16f else 10f) else 12f)).coerceIn(0f, 1f)
         var sum = 0f
-        for (i in 0 until wts.size) {
+        for (i in 0 until NC) {
+            if (i == 11 || i == 12 || i == 14 || i == 21) continue
             wts[i] = approach(wts[i], tgt[i], k)
             sum += wts[i]
         }
@@ -238,43 +484,64 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
             sum = 1f
         }
 
+        // camadas (pouso > decolagem > partida/parada) por cima da base
+        val lw = wL.coerceIn(0f, 1f)
+        val tw = Math.min(wT, 1f - lw)
+        val nw = Math.min(wN, 1f - lw - tw).coerceAtLeast(0f)
+        val gw = Math.min(wG, 1f - lw - tw - nw).coerceAtLeast(0f)
+        val baseScale = (1f - lw - tw - nw - gw).coerceAtLeast(0f)
+        for (i in 0 until NC) fw[i] = wts[i] / sum * baseScale
+        fw[11] = lw
+        fw[12] = tw
+        fw[14] = gw
+        fw[21] = nw
+
         // andar, correr e sprint dividem a mesma fase de passo (distância por ciclo de cada um)
         tClip[0] += dt
         tClip[8] += dt
         tClip[9] += dt
-        val wsum = wts[6] + wts[1] + wts[7]
+        tClip[13] += dt
+        val wWalk = wts[6] + wts[15] + wts[16]
+        val wRun = wts[1] + wts[17] + wts[18]
+        val wSpr = wts[7] + wts[19] + wts[20]
+        val wsum = wWalk + wRun + wSpr
         if (wsum > 0.001f) {
-            val stride = (wts[6] * 0.899f + wts[1] * 1.709f + wts[7] * 2.132f) / wsum
+            val stride = (wWalk * 0.899f + wRun * 1.709f + wSpr * 2.132f) / wsum
             gaitPhase += dt * world.speed / stride
             gaitPhase -= Math.floor(gaitPhase.toDouble()).toFloat()
         }
-        tClip[6] = gaitPhase * (clipArr[6]?.duration ?: 0f)
-        tClip[1] = gaitPhase * run.duration
-        tClip[7] = gaitPhase * (clipArr[7]?.duration ?: 0f)
+        if (holdPhase) gaitPhase = 0f
+        for (i in gaitIdx) {
+            tClip[i] = gaitPhase * (clipArr[i]?.duration ?: 0f)
+        }
         if (mode == 1) tClip[3] = world.clipT
         if (mode == 2) tClip[4] = world.modeT
         if (mode == 3) tClip[5] = world.modeT
         if (mode == 4) tClip[10] = world.modeT
         tClip[11] = landT
-        tClip[12] = jumpT
+        tClip[12] = takeT
+        tClip[14] = gaitT
+        tClip[21] = turnT
 
         java.util.Arrays.fill(qBlend, 0f)
         java.util.Arrays.fill(hipsBlend, 0f)
         var first = true
         val bones = model.boneCount
 
-        for (i in 0 until wts.size) {
-            val w = wts[i] / sum
+        for (i in 0 until NC) {
+            val w = fw[i]
             if (w < 0.001f) continue
             val clip: Clip? = when (i) {
                 10 -> world.actionClip
                 11 -> landClip
-                12 -> jumpClip
+                12 -> takeClip
+                14 -> gaitClip
+                21 -> turnClip
                 else -> clipArr[i]
             }
             if (clip == null) continue
             when (i) {
-                3, 5, 10, 11, 12 -> clip.sample(tClip[i], false, qTmp, hipsTmp)
+                3, 5, 10, 11, 12, 14, 21 -> clip.sample(tClip[i], false, qTmp, hipsTmp)
                 else -> clip.sample(tClip[i], true, qTmp, hipsTmp)
             }
             if (i in 3..5) {
@@ -287,12 +554,29 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
                 hipsTmp[0] = world.apx0
                 hipsTmp[2] = world.apz0
             }
-            if (i == 12) {
-                // o deslocamento vem da física; só parte da subida do quadril da animação é usada
-                clip.hips(0f, hipsJ)
-                hipsTmp[0] = hipsJ[0]
-                hipsTmp[2] = hipsJ[2]
-                if (clip !== jumpUpStart) hipsTmp[1] = hipsJ[1] + (hipsTmp[1] - hipsJ[1]) * 0.5f
+            if (i == 11 || i == 12 || i == 14) {
+                // o deslocamento vem da física; só a altura do quadril vem da animação (sem somar a subida do pulo)
+                hipsTmp[0] = 0f
+                hipsTmp[2] = 0.01f
+                if (i != 14) hipsTmp[1] = airY(hipsTmp[1])
+            }
+            if (i == 21) {
+                // o clip gira o corpo; o mundo já virou, então gira o osso raiz de volta e vai desfazendo até alinhar
+                hipsTmp[0] = 0f
+                hipsTmp[2] = 0.01f
+                val u = (tClip[21] / clip.duration).coerceIn(0f, 1f)
+                val phi = -turnD - (turnEnd - turnD) * u
+                val sh = sin(phi * 0.5f)
+                val ch = cos(phi * 0.5f)
+                val ro = rootBone * 4
+                val bx = qTmp[ro]
+                val by = qTmp[ro + 1]
+                val bz = qTmp[ro + 2]
+                val bw = qTmp[ro + 3]
+                qTmp[ro] = ch * bx + sh * bz
+                qTmp[ro + 1] = ch * by + sh * bw
+                qTmp[ro + 2] = ch * bz - sh * bx
+                qTmp[ro + 3] = ch * bw - sh * by
             }
             for (k2 in 0 until 3) hipsBlend[k2] += hipsTmp[k2] * w
             for (b in 0 until bones) {
