@@ -144,7 +144,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
             sum = 1f
         }
 
-        val rate = (world.speed / 2.66f).coerceIn(0.45f, 1.7f)
+        val rate = (world.speed / 2.56f).coerceIn(0.45f, 1.7f)
         tClip[0] += dt
         tClip[1] += dt * rate
         if (mode == 1) tClip[3] = world.clipT
@@ -206,7 +206,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         val syw = sin(world.yaw)
         val hx = world.x + hipsBlend[0] * cyw + hipsBlend[2] * syw
         val hz = world.z - hipsBlend[0] * syw + hipsBlend[2] * cyw
-        val hy = world.y + 0.38f + hipsBlend[1]
+        val hy = world.y + 0.35f + hipsBlend[1]
         camTx += (hx - camTx) * k
         camTy += (hy - camTy) * k
         camTz += (hz - camTz) * k
@@ -456,6 +456,6 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     }
 
     companion object {
-        const val GROUND_OFFSET = 0.038f
+        const val GROUND_OFFSET = 0f
     }
 }

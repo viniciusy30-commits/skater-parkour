@@ -4,7 +4,7 @@ object Shaders {
     const val SKIN_VS = """#version 300 es
 uniform mat4 uVP;
 uniform mat4 uModel;
-uniform vec4 uBones[159];
+uniform vec4 uBones[240];
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNor;
 layout(location=2) in vec2 aUv;

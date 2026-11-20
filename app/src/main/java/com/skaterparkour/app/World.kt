@@ -403,11 +403,11 @@ class World {
         const val GRAVITY = 13f
         const val BOUND = 38f
         const val DOUBLE_T = 0.5f
-        // medidas das animações de parede (feitas para uma borda de ~1,25 m)
-        const val WALL_Z = 1.385f
-        const val HANG_Y = 1.283f
-        const val CLIMB_FWD = 1.551f
-        const val CLIMB_RAISE = 0.125f
+        // medidas das animações de parede do rig novo (UE5, 80 ossos): borda a 0,70 m do pé do modelo
+        const val WALL_Z = 0.8677f
+        const val HANG_Y = 0.70f
+        const val CLIMB_FWD = 0.9791f
+        const val CLIMB_RAISE = 0.0033f
         const val GRAB_MAX_DIST = 0.8f
     }
 }

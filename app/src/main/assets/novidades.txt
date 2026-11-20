@@ -1,3 +1,10 @@
+#id 2026-11-20-a
+#titulo Personagem novo e animações melhores
+- Personagem trocado por um modelo mais detalhado, com esqueleto mais completo (80 ossos)
+- Braços e pescoço sem aquela torção estranha nas animações
+- Corrida, parado, pulo na parede, pendurar e subir refeitos com as animações novas
+- Corpo encostado na parede sem atravessar e a subida termina com os pés apoiados em cima
+
 #id 2026-11-19-d
 #titulo Pendurar na parede sem atravessar
 - Pernas não atravessam mais a parede quando o personagem está pendurado

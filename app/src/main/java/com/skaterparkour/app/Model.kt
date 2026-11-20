@@ -142,6 +142,8 @@ class Clip(val name: String, val frames: Int, val fps: Float, private val data: 
 
 /** Calcula as matrizes de pele (3 linhas por osso, formato do shader) a partir de uma pose. */
 class Skeleton(private val m: SkinModel) {
+    // osso que recebe a posição do quadril da animação (rig UE5: "pelvis"; rig antigo: osso 0)
+    private val hipsBone = m.boneIndex("pelvis").let { if (it < 0) 0 else it }
     val world = FloatArray(m.boneCount * 16)
     private val local = FloatArray(16)
     private val tmp = FloatArray(16)
@@ -164,17 +166,18 @@ class Skeleton(private val m: SkinModel) {
             local[9] = 2f * (y * z - x * w)
             local[10] = 1f - 2f * (x * x + y * y)
             local[11] = 0f
-            if (i == 0) {
-                local[12] = hips[0]; local[13] = hips[1]; local[14] = hips[2]
-            } else {
-                local[12] = m.restT[i * 3]; local[13] = m.restT[i * 3 + 1]; local[14] = m.restT[i * 3 + 2]
-            }
+            local[12] = m.restT[i * 3]; local[13] = m.restT[i * 3 + 1]; local[14] = m.restT[i * 3 + 2]
             local[15] = 1f
             val p = m.parent[i]
             if (p < 0) {
                 System.arraycopy(local, 0, world, i * 16, 16)
             } else {
                 Matrix.multiplyMM(world, i * 16, world, p * 16, local, 0)
+            }
+            if (i == hipsBone) {
+                world[i * 16 + 12] = hips[0]
+                world[i * 16 + 13] = hips[1]
+                world[i * 16 + 14] = hips[2]
             }
         }
         for (i in 0 until m.boneCount) {
