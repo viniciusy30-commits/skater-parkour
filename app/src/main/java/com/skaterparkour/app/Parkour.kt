@@ -29,6 +29,10 @@ class ActionDef(
     /** true = descida: corre para fora de uma borda e cai até um chão mais baixo (h = altura da queda). */
     val drop: Boolean = false
 ) {
+    /** Manobra de estilo (giro, acrobacia): só com o botão de pular. As práticas acontecem sozinhas. */
+    val stylish: Boolean = name.contains("360") || name.contains("DiveRoll") || name.contains("TicTac") ||
+        name.contains("Tic-Tac") || name.contains("Monkey") || name.contains("Revers") || name.contains("Thief") ||
+        name.contains("Roll") || name.contains("Jump_L_Vault") || name.contains("Ledge")
     var clip: Clip? = null
     var z0 = 0f
     /** Diferença aceita (altura real do obstáculo menos a altura da animação) sem a manobra ficar errada. */

@@ -319,3 +319,12 @@
 - Squash/stretch na aterrissagem e impulso visual no golpe (juice de animação)
 - HUD inferior redesenhado (pill escuro com accent dourado)
 - Menu principal polido: tipografia, subtítulo e botões com cantos arredondados
+
+#titulo Parkour mais natural e divertido
+- Descer de calçada ou degrau baixo agora é só um passo suave, sem animação de queda de muro alto
+- Degraus pequenos para cima e para baixo suaves, sem teleporte nem tranco
+- A animação das manobras acompanha a velocidade com que você chega, sem frear de repente no pouso
+- Correndo contra obstáculo baixo: passa por cima sozinho, mantendo o embalo
+- Correndo contra parede alta: sobe sozinho
+- Botão de pular perto de obstáculo: manobra de estilo (giro, apoio, acrobacia)
+- Manobras de estilo não acontecem sozinhas, só com o botão

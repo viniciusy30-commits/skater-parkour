@@ -91,6 +91,8 @@ class World {
     private var pendDrop = false
     /** true = subida automática ainda não iniciada (apertar pular troca por uma manobra). */
     private var pendAutoObs = false
+    /** Velocidade de reprodução da ação (acompanha a velocidade com que o jogador chegou). */
+    var actRate = 1f
     private var pendEx = 0f
     private var pendEz = 0f
     private var pendFx = 0f
@@ -398,7 +400,7 @@ class World {
     }
 
     private fun updateSpecial(dt: Float, presses: Int) {
-        modeT += dt
+        modeT += if (mode == 4 && actionKind == 1) dt * actRate else dt
         when (mode) {
             1 -> {
                 val j = clipJump
@@ -561,12 +563,19 @@ class World {
         if (hi - lo > 0.5f && (lat < lo + 0.15f || lat > hi - 0.15f)) return false
 
         val rise = b.h - y
+        val running = speed > RUN_SPEED
         var best: ActionDef? = null
         var bestScore = 1e9f
         for (d in defs) {
             if (d.drop) continue
-            // automático (só andar para frente): apenas subidas; botão de pular: manobras por cima, com subida como reserva
-            if (auto && !d.climb) continue
+            if (auto) {
+                // sem botão: só movimentos práticos (nada de acrobacia)
+                if (d.stylish) continue
+                if (rise > AUTO_MAX_RISE) {
+                    // parede alta: só sobe sozinho quem vem correndo
+                    if (!running || !d.climb) continue
+                } else if (!running && !d.climb) continue
+            }
             val dh = rise - d.h
             if (dh < d.dhLo - 0.001f || dh > d.dhHi + 0.001f) continue
             // a largura do obstáculo tem que caber na manobra (mãos e pés só tocam em cima do obstáculo)
@@ -574,7 +583,14 @@ class World {
             if (dn < d.zf - d.z0 && findStart(d, dn) < 0f) continue
             var sc = abs(d.v0 - speed) * 0.6f + abs(dh) * 6f + rnd.nextFloat() * 1.2f
             if (d.name == lastDefName) sc += 2f
-            if (!auto && d.climb) sc += 3f
+            if (auto) {
+                // correndo em obstáculo baixo: prefere passar por cima, mantendo o embalo
+                if (running && rise <= AUTO_MAX_RISE && d.climb) sc += 3f
+            } else {
+                // botão de pular = manobra de estilo (por cima, giro, apoio); subir fica de reserva
+                if (d.climb) sc += 3f
+                if (d.stylish) sc -= 1.5f
+            }
             if (sc < bestScore) {
                 bestScore = sc
                 best = d
@@ -602,7 +618,7 @@ class World {
 
     /** Procura uma borda à frente (chão que fica bem mais baixo) e escolhe a animação de descida pela altura da queda. */
     private fun planDrop(): Boolean {
-        if (defs.isEmpty() || y < 0.2f) return false
+        if (defs.isEmpty() || y < STEP_DOWN) return false
         val hy = atan2(vx, vz)
         val fx = sin(hy)
         val fz = cos(hy)
@@ -620,7 +636,7 @@ class World {
         val g3 = groundAt(x + fx * (ed + 1.4f), z + fz * (ed + 1.4f), y - 0.2f)
         if (abs(g1 - g2) > 0.12f || abs(g1 - g3) > 0.12f) return false
         val dh = y - g1
-        if (dh < 0.22f || dh > 1.0f) return false
+        if (dh < STEP_DOWN || dh > 1.0f) return false
         var best: ActionDef? = null
         var bestScore = 1e9f
         for (d in defs) {
@@ -706,6 +722,8 @@ class World {
         val c = d.clip ?: return false
         val tS = findStart(d, dn)
         if (tS < 0f) return false
+        // a animação roda na velocidade do jogador (sem frear de repente nem ficar lenta demais)
+        actRate = (speed / d.v0.coerceAtLeast(0.8f)).coerceIn(RATE_MIN, RATE_MAX)
         curDef = d
         actionClip = c
         actionKind = 1
@@ -762,7 +780,7 @@ class World {
         camLift = tmpP[1] - obsHy0 + actWarp
         shadowY = groundAt(x, z, obsY0 + 0.05f)
         if (modeT >= c.duration - 0.04f) {
-            val ve = d.ve
+            val ve = (d.ve * actRate).coerceIn(0.5f, MAX_SPEED)
             vx = obsFx * ve
             vz = obsFz * ve
             speed = ve
@@ -915,11 +933,15 @@ class World {
         supportY = groundAt(x, z, y)
         if (grounded) {
             if (supportY > y + 0.001f) {
-                y = supportY
-            } else if (supportY < y - 0.08f) {
+                // degrau para cima: o corpo sobe em ~0,1 s em vez de teleportar
+                y += (supportY - y) * min(1f, dt * 28f)
+                if (supportY - y < 0.004f) y = supportY
+            } else if (supportY < y - STEP_DOWN) {
                 grounded = false
-            } else {
-                y = supportY
+            } else if (supportY < y - 0.001f) {
+                // degrau para baixo (calçada): desce rente ao chão, sem animação de queda
+                y += (supportY - y) * min(1f, dt * 20f)
+                if (y - supportY < 0.004f) y = supportY
             }
         }
         if (!grounded) {
@@ -961,6 +983,12 @@ class World {
         const val OBS_MIN_RISE = 0.14f
         // sobe sozinho (só andando para frente) obstáculos até a metade do corpo
         const val AUTO_MAX_RISE = 0.70f
+        // acima desta velocidade o jogador está correndo (passa por cima sem parar)
+        const val RUN_SPEED = 2.6f
+        const val RATE_MIN = 0.85f
+        const val RATE_MAX = 1.35f
+        // queda até esta altura é só um degrau para baixo (sem animação de pulo)
+        const val STEP_DOWN = 0.40f
         const val OBS_MAX_RISE = 1.55f
         const val OBS_WARP_MAX = 0.36f
         const val OBS_DROP_WARP = 0.25f
