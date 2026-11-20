@@ -13,7 +13,7 @@ private fun readFloats(bb: ByteBuffer, n: Int): FloatArray {
 }
 
 /** Malha com esqueleto (formato model.bin gerado a partir do GLB do protótipo). */
-class SkinModel(ctx: Context) {
+class SkinModel(ctx: Context, suf: String = "") {
     val vertexCount: Int
     val indexCount: Int
     val boneCount: Int
@@ -30,7 +30,7 @@ class SkinModel(ctx: Context) {
     val names: List<String>
 
     init {
-        val bytes = ctx.assets.open("model.bin").use { it.readBytes() }
+        val bytes = ctx.assets.open("model$suf.bin").use { it.readBytes() }
         val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val magic = bb.int
         require(magic == 0x314C444D) { "model.bin inválido" }
@@ -119,10 +119,10 @@ class Clip(val name: String, val frames: Int, val fps: Float, private val data: 
 
     companion object {
         /** anim_all.bin: todas as animações do pacote (quaternions em 16 bits). */
-        fun loadPacked(ctx: Context): Map<String, Clip> {
+        fun loadPacked(ctx: Context, suf: String = ""): Map<String, Clip> {
             val map = HashMap<String, Clip>()
             try {
-                val bytes = ctx.assets.open("anim_all.bin").use { it.readBytes() }
+                val bytes = ctx.assets.open("anim_all$suf.bin").use { it.readBytes() }
                 val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
                 if (bb.int != 0x50414E41) return map
                 val count = bb.int
@@ -156,8 +156,8 @@ class Clip(val name: String, val frames: Int, val fps: Float, private val data: 
             return map
         }
 
-        fun loadAll(ctx: Context): Map<String, Clip> {
-            val bytes = ctx.assets.open("anim.bin").use { it.readBytes() }
+        fun loadAll(ctx: Context, suf: String = ""): Map<String, Clip> {
+            val bytes = ctx.assets.open("anim$suf.bin").use { it.readBytes() }
             val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             require(bb.int == 0x31414E41) { "anim.bin inválido" }
             val count = bb.int

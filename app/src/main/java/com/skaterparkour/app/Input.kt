@@ -6,6 +6,8 @@ object Input {
     @Volatile var jy = 0f
     @Volatile var reset = false
     @Volatile var sens = 1f
+    /** Personagem escolhido: 0 = original, 1 = anime. */
+    @Volatile var character = 0
 
     private var presses = 0
     private var ay = 0f

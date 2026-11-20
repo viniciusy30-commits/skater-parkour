@@ -1,3 +1,9 @@
+#id 2026-11-20-c
+#titulo Novo personagem: jovem anime
+- Segundo personagem jogável: jovem estilo anime de cabelo branco, camisa larga, calça cargo e tênis, braços tatuados
+- Escolha em Configurações (engrenagem) > Personagem: Original ou Anime (novo); a troca vale na hora e fica salva
+- Todas as animações (andar, correr, sprint, pulos, pousos, giros) foram adaptadas ao corpo novo
+
 #id 2026-11-20-b
 #titulo Meias-voltas e giros no lugar
 - Correndo ou em sprint, se você puxar o joystick para o lado oposto, ele faz a meia-volta de verdade, girando pelo lado esquerdo ou direito

@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         glView.onResume()
         val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
         Input.sens = 0.4f + prefs.getInt("sens", 50) / 100f * 1.2f
+        Input.character = prefs.getInt("char", 0)
         hideBars()
     }
 

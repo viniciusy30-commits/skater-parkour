@@ -97,6 +97,9 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     private var progSkin = 0
     private var progWorld = 0
     private var progShadow = 0
+    private var loadedChar = -1
+    private val skinBufs = ArrayList<Int>()
+    private var groundOffset = 0f
     private var texBody = 0
     private var texNormal = 0
     private var vaoSkin = 0
@@ -120,24 +123,27 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     private val fogG = 0.76f
     private val fogB = 0.92f
 
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        GLES30.glClearColor(fogR, fogG, fogB, 1f)
-        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
-
-        progSkin = program(Shaders.SKIN_VS, Shaders.SKIN_FS)
-        progWorld = program(Shaders.WORLD_VS, Shaders.WORLD_FS)
-        progShadow = program(Shaders.SHADOW_VS, Shaders.SHADOW_FS)
-
-        model = SkinModel(ctx)
+    /** Carrega (ou troca) o personagem: 0 = original, 1 = anime. Roda na thread GL. */
+    private fun loadCharacter(id: Int) {
+        val suf = if (id == 1) "_b" else ""
+        if (texBody != 0) {
+            GLES30.glDeleteTextures(2, intArrayOf(texBody, texNormal), 0)
+            texBody = 0
+            texNormal = 0
+        }
+        if (vaoSkin != 0) GLES30.glDeleteVertexArrays(1, intArrayOf(vaoSkin), 0)
+        if (skinBufs.isNotEmpty()) GLES30.glDeleteBuffers(skinBufs.size, skinBufs.toIntArray(), 0)
+        skinBufs.clear()
+        model = SkinModel(ctx, suf)
         skeleton = Skeleton(model)
         skinOut = FloatArray(model.boneCount * 12)
-        val clips = Clip.loadAll(ctx)
+        val clips = Clip.loadAll(ctx, suf)
         clipArr[0] = clips["idle"]
         clipArr[1] = clips["run"]
         clipArr[3] = clips["jump"]
         clipArr[4] = clips["hang"]
         clipArr[5] = clips["climb"]
-        val all = Clip.loadPacked(ctx)
+        val all = Clip.loadPacked(ctx, suf)
         allClips = all
         clipArr[6] = all["A_Walk_IP"]
         clipArr[7] = all["A_Sprint_IP"]
@@ -183,10 +189,23 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         val cc = clips["climb"]
         if (cj != null && cc != null) world.setClips(cj, cc)
 
-        texBody = loadTexture("body.jpg")
-        texNormal = loadTexture("normal.png")
+        texBody = loadTexture(if (id == 1) "body_b.jpg" else "body.jpg")
+        texNormal = loadTexture(if (id == 1) "normal_b.jpg" else "normal.png")
 
         buildSkinVao()
+        groundOffset = if (id == 1) 0.01f else GROUND_OFFSET
+        loadedChar = id
+    }
+
+    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        GLES30.glClearColor(fogR, fogG, fogB, 1f)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+
+        progSkin = program(Shaders.SKIN_VS, Shaders.SKIN_FS)
+        progWorld = program(Shaders.WORLD_VS, Shaders.WORLD_FS)
+        progShadow = program(Shaders.SHADOW_VS, Shaders.SHADOW_FS)
+
+        loadCharacter(Input.character)
         buildCubeVao()
         buildQuadVao()
         lastNs = System.nanoTime()
@@ -200,6 +219,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     }
 
     override fun onDrawFrame(gl: GL10?) {
+        if (Input.character != loadedChar) loadCharacter(Input.character)
         val now = System.nanoTime()
         var dt = (now - lastNs) / 1_000_000_000f
         lastNs = now
@@ -687,7 +707,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         GLES30.glUseProgram(progSkin)
         GLES30.glDisable(GLES30.GL_CULL_FACE)
         Matrix.setIdentityM(tmpM, 0)
-        Matrix.translateM(tmpM, 0, world.x, world.y + GROUND_OFFSET, world.z)
+        Matrix.translateM(tmpM, 0, world.x, world.y + groundOffset, world.z)
         Matrix.rotateM(tmpM, 0, Math.toDegrees(world.yaw.toDouble()).toFloat(), 0f, 1f, 0f)
         GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(progSkin, "uVP"), 1, false, vp, 0)
         GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(progSkin, "uModel"), 1, false, tmpM, 0)
@@ -789,22 +809,22 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
 
     private fun buildSkinVao() {
         vaoSkin = newVao()
-        vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.pos), model.pos.size * 4)
+        skinBufs.add(vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.pos), model.pos.size * 4))
         GLES30.glEnableVertexAttribArray(0)
         GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, 0)
-        vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.nor), model.nor.size * 4)
+        skinBufs.add(vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.nor), model.nor.size * 4))
         GLES30.glEnableVertexAttribArray(1)
         GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, 0, 0)
-        vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.uv), model.uv.size * 4)
+        skinBufs.add(vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.uv), model.uv.size * 4))
         GLES30.glEnableVertexAttribArray(2)
         GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, 0, 0)
-        vbo(GLES30.GL_ARRAY_BUFFER, byteBuf(model.joints), model.joints.size)
+        skinBufs.add(vbo(GLES30.GL_ARRAY_BUFFER, byteBuf(model.joints), model.joints.size))
         GLES30.glEnableVertexAttribArray(3)
         GLES30.glVertexAttribPointer(3, 4, GLES30.GL_UNSIGNED_BYTE, false, 0, 0)
-        vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.weights), model.weights.size * 4)
+        skinBufs.add(vbo(GLES30.GL_ARRAY_BUFFER, floatBuf(model.weights), model.weights.size * 4))
         GLES30.glEnableVertexAttribArray(4)
         GLES30.glVertexAttribPointer(4, 4, GLES30.GL_FLOAT, false, 0, 0)
-        vbo(GLES30.GL_ELEMENT_ARRAY_BUFFER, shortBuf(model.indices), model.indices.size * 2)
+        skinBufs.add(vbo(GLES30.GL_ELEMENT_ARRAY_BUFFER, shortBuf(model.indices), model.indices.size * 2))
         GLES30.glBindVertexArray(0)
     }
 
