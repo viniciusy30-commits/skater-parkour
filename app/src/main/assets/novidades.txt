@@ -2,7 +2,7 @@
 #titulo Todas as animações dentro do jogo
 - Pacote com as 255 animações do personagem incluído no app
 - Agora ele anda, corre e faz sprint conforme você empurra o joystick, com passos sincronizados
-- Pulo com pose de subida e de descida no ar
+- Pulo com decolagem de verdade: salto vertical parado, salto com passada correndo, e pose de subida e descida no ar
 - Aterrissagem suave ou pesada conforme a altura da queda
 - Caindo de uma altura grande em movimento, o personagem rola no chão
 

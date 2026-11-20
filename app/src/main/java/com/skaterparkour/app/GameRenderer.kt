@@ -22,11 +22,17 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
     private lateinit var model: SkinModel
     private lateinit var skeleton: Skeleton
     // 0 idle, 1 correr, 2 (livre), 3 pular na parede, 4 pendurado, 5 subir,
-    // 6 andar, 7 sprint, 8 ar subindo, 9 ar descendo, 10 ação (rolamento), 11 pouso
-    private val clipArr = arrayOfNulls<Clip>(12)
-    private val wts = FloatArray(12).also { it[0] = 1f }
-    private val tgt = FloatArray(12)
-    private val tClip = FloatArray(12)
+    // 6 andar, 7 sprint, 8 ar subindo, 9 ar descendo, 10 ação (rolamento), 11 pouso, 12 decolagem
+    private val clipArr = arrayOfNulls<Clip>(13)
+    private val wts = FloatArray(13).also { it[0] = 1f }
+    private val tgt = FloatArray(13)
+    private val tClip = FloatArray(13)
+    private var jumpClip: Clip? = null
+    private var jumpT = 0f
+    private var jumpUpStart: Clip? = null
+    private var jumpFrontL: Clip? = null
+    private var jumpFrontR: Clip? = null
+    private val hipsJ = FloatArray(3)
     private var gaitPhase = 0f
     private var landClip: Clip? = null
     private var landT = 0f
@@ -90,6 +96,9 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         clipArr[7] = all["A_Sprint_IP"]
         clipArr[8] = all["A_Fly_Up"]
         clipArr[9] = all["A_Fly_Down"]
+        jumpUpStart = all["A_JumpUp_Start"]
+        jumpFrontL = all["A_Jump_Front_L_Start"]
+        jumpFrontR = all["A_Jump_Front_R_Start"]
         landLight = all["A_Landing_Down_Light"]
         landHeavy = all["A_Landing_Down"]
         world.setRolls(
@@ -153,6 +162,29 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
                 landT = 0f
             }
         }
+        // decolagem: salto para frente se estiver correndo, vertical se estiver parado
+        if (world.jumpEvent) {
+            world.jumpEvent = false
+            if (world.mode == 0) {
+                if (world.jumpSpeed > 1.5f) {
+                    jumpClip = if (gaitPhase < 0.5f) jumpFrontL else jumpFrontR
+                    jumpT = 0f
+                } else {
+                    jumpClip = jumpUpStart
+                    jumpT = 12f / 30f
+                }
+            }
+        }
+        var jumpW = 0f
+        val jc = jumpClip
+        if (jc != null) {
+            jumpT += dt
+            if (jumpT >= jc.duration || mode != 0 || world.grounded) {
+                jumpClip = null
+            } else {
+                jumpW = ((jc.duration - jumpT) / 0.15f).coerceIn(0f, 1f)
+            }
+        }
         var landW = 0f
         val lc = landClip
         if (lc != null) {
@@ -190,6 +222,11 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
             tgt[11] = landW
         }
 
+        if (jumpW > 0f) {
+            for (i in 0 until 10) tgt[i] *= (1f - jumpW)
+            tgt[12] = jumpW
+        }
+
         val k = (dt * (if (mode == 0) 10f else 12f)).coerceIn(0f, 1f)
         var sum = 0f
         for (i in 0 until wts.size) {
@@ -219,6 +256,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         if (mode == 3) tClip[5] = world.modeT
         if (mode == 4) tClip[10] = world.modeT
         tClip[11] = landT
+        tClip[12] = jumpT
 
         java.util.Arrays.fill(qBlend, 0f)
         java.util.Arrays.fill(hipsBlend, 0f)
@@ -231,11 +269,12 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
             val clip: Clip? = when (i) {
                 10 -> world.actionClip
                 11 -> landClip
+                12 -> jumpClip
                 else -> clipArr[i]
             }
             if (clip == null) continue
             when (i) {
-                3, 5, 10, 11 -> clip.sample(tClip[i], false, qTmp, hipsTmp)
+                3, 5, 10, 11, 12 -> clip.sample(tClip[i], false, qTmp, hipsTmp)
                 else -> clip.sample(tClip[i], true, qTmp, hipsTmp)
             }
             if (i in 3..5) {
@@ -247,6 +286,13 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
                 // o deslocamento do rolamento vem do mundo; aqui o corpo fica no lugar
                 hipsTmp[0] = world.apx0
                 hipsTmp[2] = world.apz0
+            }
+            if (i == 12) {
+                // o deslocamento vem da física; só parte da subida do quadril da animação é usada
+                clip.hips(0f, hipsJ)
+                hipsTmp[0] = hipsJ[0]
+                hipsTmp[2] = hipsJ[2]
+                if (clip !== jumpUpStart) hipsTmp[1] = hipsJ[1] + (hipsTmp[1] - hipsJ[1]) * 0.5f
             }
             for (k2 in 0 until 3) hipsBlend[k2] += hipsTmp[k2] * w
             for (b in 0 until bones) {

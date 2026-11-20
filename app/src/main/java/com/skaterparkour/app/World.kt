@@ -38,6 +38,8 @@ class World {
     // pouso e ação com movimento da própria animação (rolamento)
     var landVy = 0f
     var landEvent = false
+    var jumpEvent = false
+    var jumpSpeed = 0f
     var actionClip: Clip? = null
     var apx0 = 0f
     var apz0 = 0f
@@ -398,6 +400,8 @@ class World {
             if (grounded) {
                 vy = JUMP_SPEED
                 grounded = false
+                jumpEvent = true
+                jumpSpeed = speed
             }
         }
 
