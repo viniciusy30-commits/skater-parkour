@@ -568,7 +568,7 @@ class World {
             if (abs(rise - d.h) > OBS_WARP_MAX) continue
             if (depth < d.dMin || depth > d.dMax + 0.04f) continue
             if (dn < d.zf - d.z0 && findStart(d, dn) < 0f) continue
-            var sc = abs(d.v0 - speed) * 0.6f + rnd.nextFloat() * 1.2f
+            var sc = abs(d.v0 - speed) * 0.6f + abs(rise - d.h) * 6f + rnd.nextFloat() * 1.2f
             if (d.name == lastDefName) sc += 2f
             // correndo: prefere passar por cima; devagar: prefere subir
             if (running == d.climb) sc += 1.5f
@@ -622,8 +622,9 @@ class World {
         for (d in defs) {
             if (!d.drop) continue
             if (abs(dh - d.h) > OBS_DROP_WARP) continue
+            if (d.endZ - d.zf < 0.22f) continue
             if (ed < d.zf - d.z0 && findStart(d, ed) < 0f) continue
-            var sc = abs(d.v0 - speed) * 0.6f + abs(dh - d.h) * 3f + rnd.nextFloat() * 1.2f
+            var sc = abs(d.v0 - speed) * 0.6f + abs(dh - d.h) * 6f + rnd.nextFloat() * 1.2f
             if (d.name == lastDefName) sc += 2f
             if (sc < bestScore) {
                 bestScore = sc
@@ -760,13 +761,16 @@ class World {
             vx = obsFx * ve
             vz = obsFz * ve
             speed = ve
-            pushOut()
             x = x.coerceIn(-BOUND, BOUND)
             z = z.coerceIn(-BOUND, BOUND)
-            val feet = if (d.climb) obsTop + 0.05f else if (d.drop) obsTop + 0.1f else obsY0 + 0.1f
-            val gy = groundAt(x, z, feet)
-            offY = gy - obsY0
+            // altura de chegada: sobe = topo do obstáculo; desce = chão de pouso (nunca volta para o topo da borda); salto = chão
+            val feet = if (d.climb) obsTop + 0.05f else if (d.drop) obsTop - 0.1f else obsY0 + 0.1f
+            var gy = groundAt(x, z, feet)
+            if (d.drop && gy > obsY0) gy = obsY0
+            // primeiro acerta a altura, só depois empurra para fora das paredes (antes o empurrão jogava o corpo de volta ao chão)
             y = gy
+            pushOut()
+            offY = gy - obsY0
             supportY = gy
             grounded = true
             mode = 0
@@ -821,7 +825,7 @@ class World {
             if (!grounded) {
                 windT = -1f
             } else if (windT >= jumpWind) {
-                vy = JUMP_SPEED
+                vy = if (jumpSpeed > 1.5f) JUMP_RUN else JUMP_STAND
                 grounded = false
                 windT = -1f
             }
@@ -925,7 +929,9 @@ class World {
 
     companion object {
         const val MAX_SPEED = 3.8f
-        const val JUMP_SPEED = 5.6f
+        // pulo parado ~0,5 m e pulo correndo ~0,65 m (antes 1,2 m nos dois)
+        const val JUMP_STAND = 3.6f
+        const val JUMP_RUN = 4.1f
         const val WIND_STAND = 0.2f
         const val WIND_RUN = 0.09f
         const val GRAVITY = 13f

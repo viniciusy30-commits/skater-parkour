@@ -31,6 +31,8 @@ class ActionDef(
 ) {
     var clip: Clip? = null
     var z0 = 0f
+    /** Posição z do quadril no último quadro (para saber se a descida termina depois da borda). */
+    var endZ = 0f
 }
 
 object Parkour {
@@ -64,6 +66,8 @@ object Parkour {
                 d.clip = clip
                 clip.hips(0f, tmp)
                 d.z0 = tmp[2]
+                clip.hips(clip.duration, tmp)
+                d.endZ = tmp[2]
                 list.add(d)
             }
         } catch (e: Exception) {

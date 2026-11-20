@@ -1,3 +1,10 @@
+#id 2026-11-20-e
+#titulo Subidas, descidas e pulos corrigidos
+- Subir em degraus, caixas e paredes: o personagem não volta mais para o chão depois de subir, ele fica em cima do obstáculo
+- Descidas: a animação agora é escolhida pela altura real da queda e sempre termina no chão de baixo, sem voltar para cima da borda nem se jogar bruscamente
+- Saltos por cima de obstáculos escolhem a animação que combina melhor com a altura do obstáculo
+- Pulo parado e pulo correndo ficaram bem mais baixos e naturais (antes passavam de 1 m)
+
 #id 2026-11-20-d
 #titulo Parkour de verdade: obstáculos, degraus e descidas
 - Novo sistema de obstáculos: ao correr ou andar em direção a um degrau, caixa ou parede, o personagem escolhe sozinho a animação certa para a altura e a profundidade (saltos por cima, subidas, tic-tac na parede)
