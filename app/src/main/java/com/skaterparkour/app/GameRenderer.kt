@@ -185,6 +185,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
                 all["A_Landing_Roll_B_L"], all["A_Landing_Roll_B_R"]
             )
         )
+        world.setParkour(Parkour.load(ctx, suf, all))
         val cj = clips["jump"]
         val cc = clips["climb"]
         if (cj != null && cc != null) world.setClips(cj, cc)
@@ -492,7 +493,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
             tgt[2 + mode] = 1f
         }
 
-        val k = (dt * (if (mode == 0) (if (landClip != null) 16f else 10f) else 12f)).coerceIn(0f, 1f)
+        val k = (dt * (if (mode == 0) (if (landClip != null) 16f else 10f) else if (mode == 4) 20f else 12f)).coerceIn(0f, 1f)
         var sum = 0f
         for (i in 0 until NC) {
             if (i == 11 || i == 12 || i == 14 || i == 21) continue
@@ -570,9 +571,11 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
                 hipsTmp[2] -= world.offZ
             }
             if (i == 10) {
-                // o deslocamento do rolamento vem do mundo; aqui o corpo fica no lugar
+                // o deslocamento do rolamento/obstáculo vem do mundo; aqui o corpo fica no lugar
                 hipsTmp[0] = world.apx0
                 hipsTmp[2] = world.apz0
+                // obstáculo: a altura vem da animação, ajustada à altura real, menos a subida que o mundo já fez
+                if (world.actionKind == 1) hipsTmp[1] = hipsTmp[1] + world.actWarp - world.offY
             }
             if (i == 11 || i == 12 || i == 14) {
                 // o deslocamento vem da física; só a altura do quadril vem da animação (sem somar a subida do pulo)

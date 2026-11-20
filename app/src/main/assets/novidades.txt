@@ -1,3 +1,11 @@
+#id 2026-11-20-d
+#titulo Parkour de verdade: obstáculos de todas as alturas
+- Novo sistema de obstáculos: ao correr ou andar em direção a um degrau, caixa baixa ou parede, o personagem escolhe sozinho a animação certa para a altura e a profundidade (saltos por cima, subidas, degraus)
+- Cada animação foi medida no corpo do personagem: mãos e pés só tocam o obstáculo na hora certa e o corpo se ajusta à altura real, sem atravessar a parede
+- Mais de 30 animações em uso por personagem (Kong, Speed, Safety, Thief, TwoHand, Revers, TicTac, Dash, subidas e mais), com variação para não repetir sempre a mesma
+- A arena de treino ganhou uma fila de obstáculos (degrau, baixo, parede e muro alto, finos e fundos) e um percurso encadeado para testar a transição entre eles
+- A transição entre andar, correr e a animação do obstáculo ficou mais rápida e suave; ao terminar, o personagem emenda na corrida
+
 #id 2026-11-20-c
 #titulo Novo personagem: jovem anime
 - Segundo personagem jogável: jovem estilo anime de cabelo branco, camisa larga, calça cargo e tênis, braços tatuados

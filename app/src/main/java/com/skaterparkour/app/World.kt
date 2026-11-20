@@ -62,6 +62,33 @@ class World {
     private var ax0 = 0f
     private var az0 = 0f
 
+    // obstáculos: ações medidas (saltos por cima, subidas, degraus)
+    private var defs: List<ActionDef> = emptyList()
+    private val rnd = java.util.Random()
+    private var lastDefName = ""
+    /** 0 = rolamento, 1 = ação de obstáculo (a animação desloca o corpo). */
+    var actionKind = 0
+    /** Ajuste vertical (m) do quadril da animação para a altura real do obstáculo. */
+    var actWarp = 0f
+    private var curDef: ActionDef? = null
+    private var obsFx = 0f
+    private var obsFz = 1f
+    private var obsX0 = 0f
+    private var obsZ0 = 0f
+    private var obsY0 = 0f
+    private var obsH0x = 0f
+    private var obsH0z = 0f
+    private var obsTop = 0f
+    private var obsDelta = 0f
+    // ação planejada que espera o personagem chegar na distância certa do obstáculo
+    private var pend: ActionDef? = null
+    private var pendNx = 0f
+    private var pendNz = 0f
+    private var pendPlane = 0f
+    private var pendAxisX = true
+    private var pendTop = 0f
+    private var pendT = 0f
+
     private var clipJump: Clip? = null
     private var clipClimb: Clip? = null
     private var hz0 = 0f
@@ -105,6 +132,10 @@ class World {
         if (hzEnd - hz0 < 0.1f) hzEnd = hz0 + 0.1f
     }
 
+    fun setParkour(list: List<ActionDef>) {
+        defs = list
+    }
+
     fun setRolls(list: List<Clip>) {
         rollClips.clear()
         rollClips.addAll(list)
@@ -116,6 +147,8 @@ class World {
             val c = rollClips[rollIdx % rollClips.size]
             rollIdx++
             actionClip = c
+            actionKind = 0
+            actWarp = 0f
             c.hips(0f, tmpP)
             apx0 = tmpP[0]
             apz0 = tmpP[2]
@@ -132,28 +165,36 @@ class World {
         blocks.add(Block(cx, cz, sx, sz, h, r, g, b))
     }
 
+    /** Obstáculo com a frente em z = 0 (aproximação pelo lado -z); o centro fica a meia profundidade. */
+    private fun station(cx: Float, z0: Float, depth: Float, h: Float, width: Float, r: Float, g: Float, b: Float) {
+        add(cx, z0 + depth / 2f, width, depth, h, r, g, b)
+    }
+
     private fun build() {
-        // degraus
-        add(-6f, 6f, 2.5f, 2f, 0.4f, 0.95f, 0.55f, 0.25f)
-        add(-6f, 8f, 2.5f, 2f, 0.8f, 0.95f, 0.45f, 0.25f)
-        add(-6f, 10f, 2.5f, 2f, 1.2f, 0.95f, 0.35f, 0.25f)
-        // plataformas para pular
-        add(3f, 5f, 2f, 2f, 0.5f, 0.30f, 0.75f, 0.95f)
-        add(6.5f, 5f, 2f, 2f, 0.8f, 0.30f, 0.65f, 0.95f)
-        add(10f, 5f, 2f, 2f, 1.0f, 0.30f, 0.55f, 0.95f)
-        add(13.5f, 5f, 2f, 2f, 0.6f, 0.30f, 0.45f, 0.95f)
-        // caixas grandes
-        add(8f, -4f, 3f, 3f, 1.0f, 0.60f, 0.85f, 0.45f)
-        add(11.5f, -4f, 2f, 2f, 1.5f, 0.50f, 0.80f, 0.40f)
-        add(-9f, -5f, 4f, 2f, 0.6f, 0.80f, 0.60f, 0.90f)
-        // paredes
-        add(0f, 14f, 10f, 1f, 2.2f, 0.75f, 0.75f, 0.80f)
-        add(-14f, 2f, 1f, 8f, 1.8f, 0.70f, 0.72f, 0.78f)
-        // obstáculos baixos
-        add(0f, 3f, 1f, 1f, 0.3f, 0.95f, 0.85f, 0.30f)
-        add(-2f, 4f, 1f, 1f, 0.45f, 0.95f, 0.85f, 0.30f)
-        // parede de treino para agarrar e subir (1,5 m), bem perto do início
-        add(0f, 0f, 5f, 0.6f, 1.5f, 0.95f, 0.40f, 0.45f)
+        // Cada altura tem animações feitas sob medida: degrau 0,26 m, baixo 0,62 m, parede 1,30 m.
+        // Amarelo = degrau, azul = baixo, laranja = parede, roxo = muro alto (agarrar e subir).
+        // fila de treino (frente em z = 0): finos para passar por cima, fundos para subir
+        station(-16f, 0f, 0.5f, 0.26f, 3f, 0.95f, 0.85f, 0.30f)
+        station(-12f, 0f, 1.8f, 0.26f, 3f, 0.95f, 0.80f, 0.25f)
+        station(-8f, 0f, 0.45f, 0.62f, 3f, 0.30f, 0.65f, 0.95f)
+        station(-4f, 0f, 0.8f, 0.62f, 3f, 0.30f, 0.75f, 0.95f)
+        station(0f, 0f, 1.6f, 0.62f, 3f, 0.35f, 0.55f, 0.95f)
+        station(4f, 0f, 2.6f, 0.62f, 3f, 0.30f, 0.45f, 0.90f)
+        station(8f, 0f, 0.4f, 1.30f, 3f, 0.98f, 0.55f, 0.25f)
+        station(12f, 0f, 2.0f, 1.30f, 3f, 0.95f, 0.45f, 0.20f)
+        station(16f, 0f, 1.0f, 1.80f, 3f, 0.70f, 0.45f, 0.90f)
+        // percurso encadeado (x = 24): vários obstáculos seguidos
+        station(24f, 8f, 0.45f, 0.62f, 3f, 0.30f, 0.65f, 0.95f)
+        station(24f, 15f, 0.5f, 0.26f, 3f, 0.95f, 0.85f, 0.30f)
+        station(24f, 22f, 1.2f, 0.62f, 3f, 0.35f, 0.55f, 0.95f)
+        station(24f, 29f, 0.4f, 1.30f, 3f, 0.98f, 0.55f, 0.25f)
+        // escada de alturas (0,26 / 0,62 / 1,30) para subir e descer
+        add(-24f, 10f, 3f, 2f, 0.26f, 0.95f, 0.85f, 0.30f)
+        add(-24f, 12f, 3f, 2f, 0.62f, 0.30f, 0.65f, 0.95f)
+        add(-24f, 14f, 3f, 2f, 1.30f, 0.98f, 0.55f, 0.25f)
+        // muros altos nas bordas da arena
+        add(0f, 36f, 14f, 1f, 2.4f, 0.75f, 0.75f, 0.80f)
+        add(-30f, 6f, 1f, 14f, 1.8f, 0.70f, 0.72f, 0.78f)
     }
 
     fun reset() {
@@ -167,6 +208,10 @@ class World {
         windT = -1f
         targetSpeed = 0f; yawRate = 0f
         turnLock = 0f; turnEvent = false
+        pend = null
+        curDef = null
+        actionKind = 0
+        actWarp = 0f
     }
 
     private fun groundAt(px: Float, pz: Float, feet: Float): Float {
@@ -271,7 +316,7 @@ class World {
         found = false
         for (b in blocks) {
             val rise = b.h - y
-            if (rise < 0.5f || rise > 1.9f) continue
+            if (rise < 1.5f || rise > 1.9f) continue
             consider(b, 1f, 0f, b.cx + b.sx / 2f, z, b.cz - b.sz / 2f, b.cz + b.sz / 2f, fx, fz)
             consider(b, -1f, 0f, b.cx - b.sx / 2f, z, b.cz - b.sz / 2f, b.cz + b.sz / 2f, fx, fz)
             consider(b, 0f, 1f, b.cz + b.sz / 2f, x, b.cx - b.sx / 2f, b.cx + b.sx / 2f, fx, fz)
@@ -370,6 +415,10 @@ class World {
                 }
             }
             4 -> {
+                if (actionKind == 1) {
+                    updateObstacle(dt)
+                    return
+                }
                 val c = actionClip
                 if (c == null) {
                     mode = 0
@@ -412,15 +461,248 @@ class World {
         }
     }
 
+    // ---------------------------------------------------------------- obstáculos (saltos, subidas, degraus)
+
+    /** Procura o obstáculo à frente e escolhe a animação pela altura, profundidade e velocidade. */
+    private fun planObstacle(): Boolean {
+        if (defs.isEmpty()) return false
+        val hy = if (speed > 0.8f) atan2(vx, vz) else yaw
+        val fx = sin(hy)
+        val fz = cos(hy)
+        var bestT = 1e9f
+        var bb: Block? = null
+        var bnx = 0f
+        var bnz = 0f
+        for (b in blocks) {
+            val rise = b.h - y
+            if (rise < OBS_MIN_RISE || rise > OBS_MAX_RISE) continue
+            val minX = b.cx - b.sx / 2f
+            val maxX = b.cx + b.sx / 2f
+            val minZ = b.cz - b.sz / 2f
+            val maxZ = b.cz + b.sz / 2f
+            var tNear = -1e9f
+            var tFar = 1e9f
+            var nx = 0f
+            var nz = 0f
+            var miss = false
+            if (abs(fx) < 1e-5f) {
+                if (x < minX || x > maxX) miss = true
+            } else {
+                var t1 = (minX - x) / fx
+                var t2 = (maxX - x) / fx
+                var n = -1f
+                if (t1 > t2) {
+                    val sw = t1; t1 = t2; t2 = sw
+                    n = 1f
+                }
+                if (t1 > tNear) {
+                    tNear = t1; nx = n; nz = 0f
+                }
+                if (t2 < tFar) tFar = t2
+            }
+            if (abs(fz) < 1e-5f) {
+                if (z < minZ || z > maxZ) miss = true
+            } else {
+                var t1 = (minZ - z) / fz
+                var t2 = (maxZ - z) / fz
+                var n = -1f
+                if (t1 > t2) {
+                    val sw = t1; t1 = t2; t2 = sw
+                    n = 1f
+                }
+                if (t1 > tNear) {
+                    tNear = t1; nx = 0f; nz = n
+                }
+                if (t2 < tFar) tFar = t2
+            }
+            if (miss || tNear > tFar || tNear < 0f || tNear > OBS_REACH) continue
+            if (tNear < bestT) {
+                bestT = tNear
+                bb = b
+                bnx = nx
+                bnz = nz
+            }
+        }
+        val b = bb ?: return false
+        if (bnx == 0f && bnz == 0f) return false
+        val cosA = fx * (-bnx) + fz * (-bnz)
+        if (cosA < 0.75f) return false
+        val axisX = bnx != 0f
+        val plane = if (axisX) (if (bnx > 0f) b.cx + b.sx / 2f else b.cx - b.sx / 2f)
+        else (if (bnz > 0f) b.cz + b.sz / 2f else b.cz - b.sz / 2f)
+        val dn = if (axisX) (x - plane) * bnx else (z - plane) * bnz
+        if (dn < 0.05f) return false
+        val depth = if (axisX) b.sx else b.sz
+        val lat = if (axisX) z else x
+        val lo = if (axisX) b.cz - b.sz / 2f else b.cx - b.sx / 2f
+        val hi = if (axisX) b.cz + b.sz / 2f else b.cx + b.sx / 2f
+        if (hi - lo > 0.5f && (lat < lo + 0.15f || lat > hi - 0.15f)) return false
+
+        val rise = b.h - y
+        val cls = if (rise < 0.43f) 0 else if (rise < 0.96f) 1 else 2
+        val running = speed > 1.8f
+        var best: ActionDef? = null
+        var bestScore = 1e9f
+        for (d in defs) {
+            if (d.cls != cls) continue
+            if (abs(rise - d.h) > OBS_WARP_MAX) continue
+            if (depth < d.dMin || depth > d.dMax + 0.04f) continue
+            if (dn < d.zf - d.z0 && findStart(d, dn) < 0f) continue
+            var sc = abs(d.v0 - speed) * 0.6f + rnd.nextFloat() * 1.2f
+            if (d.name == lastDefName) sc += 2f
+            // correndo: prefere passar por cima; devagar: prefere subir
+            if (running == d.climb) sc += 1.5f
+            if (sc < bestScore) {
+                bestScore = sc
+                best = d
+            }
+        }
+        val d = best ?: return false
+        pend = d
+        pendNx = bnx
+        pendNz = bnz
+        pendPlane = plane
+        pendAxisX = axisX
+        pendTop = b.h
+        pendT = 0f
+        lastDefName = d.name
+        // já está na distância certa: começa agora
+        if (dn <= d.zf - d.z0 + 0.02f) {
+            val ok = startPlanned(d, dn)
+            pend = null
+            return ok
+        }
+        return true
+    }
+
+    /** Tempo da animação em que o quadril já percorreu a distância que falta; -1 se está perto demais. */
+    private fun findStart(d: ActionDef, dn: Float): Float {
+        val c = d.clip ?: return -1f
+        val zfa = d.zf - d.z0
+        if (dn >= zfa) return 0f
+        val need = zfa - dn
+        val tMax = (d.c0 - 0.08f).coerceAtLeast(0f)
+        var t = 0f
+        while (t < tMax) {
+            c.hips(t, tmpP)
+            if (tmpP[2] - d.z0 >= need) break
+            t += 1f / 60f
+        }
+        c.hips(t, tmpP)
+        return if (tmpP[2] - d.z0 < need - 0.06f) -1f else t
+    }
+
+    private fun updatePending(dt: Float): Boolean {
+        val d = pend ?: return false
+        pendT += dt
+        val dn = if (pendAxisX) (x - pendPlane) * pendNx else (z - pendPlane) * pendNz
+        val zfa = d.zf - d.z0
+        if (pendT > 1.6f || !grounded || dn < 0.08f || (pendT > 0.4f && speed < 0.5f && targetSpeed < 0.3f)) {
+            pend = null
+            return false
+        }
+        if (dn <= zfa + 0.02f) {
+            val ok = startPlanned(d, dn)
+            pend = null
+            return ok
+        }
+        return false
+    }
+
+    private fun startPlanned(d: ActionDef, dn: Float): Boolean {
+        val c = d.clip ?: return false
+        val tS = findStart(d, dn)
+        if (tS < 0f) return false
+        curDef = d
+        actionClip = c
+        actionKind = 1
+        obsFx = -pendNx
+        obsFz = -pendNz
+        obsX0 = x
+        obsZ0 = z
+        obsY0 = y
+        obsTop = pendTop
+        obsDelta = (pendTop - y) - d.h
+        c.hips(0f, tmpP)
+        apx0 = tmpP[0]
+        apz0 = tmpP[2]
+        c.hips(tS, tmpP)
+        obsH0x = tmpP[0]
+        obsH0z = tmpP[2]
+        actWarp = 0f
+        vx = 0f; vz = 0f; vy = 0f
+        speed = 0f
+        mode = 4
+        modeT = tS
+        offX = 0f; offY = 0f; offZ = 0f
+        return true
+    }
+
+    private fun smooth(u: Float): Float {
+        val k = u.coerceIn(0f, 1f)
+        return k * k * (3f - 2f * k)
+    }
+
+    private fun updateObstacle(dt: Float) {
+        val d = curDef
+        val c = actionClip
+        if (d == null || c == null) {
+            mode = 0
+            actionKind = 0
+            return
+        }
+        val t = min(modeT, c.duration)
+        c.hips(t, tmpP)
+        val dx = tmpP[0] - obsH0x
+        val dz = tmpP[2] - obsH0z
+        x = obsX0 + dx * obsFz + dz * obsFx
+        z = obsZ0 - dx * obsFx + dz * obsFz
+        y = obsY0
+        // vira de frente para o obstáculo logo no começo
+        turnTo(atan2(obsFx, obsFz), min(1f, dt * 16f))
+        // sobe o corpo até a altura real do obstáculo (mãos e pés encostam em cima dele)
+        val up = smooth((t - (d.c0 - 0.2f)) / 0.2f)
+        actWarp = if (d.climb) obsDelta * up else obsDelta * up * (1f - smooth((t - d.c1) / 0.2f))
+        if (modeT >= c.duration - 0.04f) {
+            val ve = d.ve
+            vx = obsFx * ve
+            vz = obsFz * ve
+            speed = ve
+            pushOut()
+            x = x.coerceIn(-BOUND, BOUND)
+            z = z.coerceIn(-BOUND, BOUND)
+            val feet = if (d.climb) obsTop + 0.05f else obsY0 + 0.1f
+            val gy = groundAt(x, z, feet)
+            offY = gy - obsY0
+            y = gy
+            supportY = gy
+            grounded = true
+            mode = 0
+            modeT = 0f
+        }
+    }
+
     // ---------------------------------------------------------------- movimento normal
 
     private fun updateNormal(dt: Float, presses: Int) {
+        if (pend != null && updatePending(dt)) {
+            updateSpecial(0f, 0)
+            return
+        }
         for (i in 0 until presses) {
             val dbl = timeNow - lastPress < DOUBLE_T
             lastPress = timeNow
             if (dbl && tryGrab()) {
                 updateSpecial(0f, 0)
                 return
+            }
+            if (pend != null) continue
+            if (grounded && windT < 0f && planObstacle()) {
+                if (pend == null) {
+                    updateSpecial(0f, 0)
+                    return
+                }
+                continue
             }
             if (grounded && windT < 0f) {
                 // agacha primeiro; o corpo só sai do chão quando a agachada termina
@@ -553,5 +835,10 @@ class World {
         const val GRAB_MAX_DIST = 0.8f
         // queda mais rápida que isso (cerca de 1,5 m) e correndo: o personagem rola ao cair
         const val ROLL_VY = 5.8f
+        // obstáculos: alcance da busca, alturas aceitas (m acima dos pés) e ajuste máximo da animação
+        const val OBS_REACH = 3.6f
+        const val OBS_MIN_RISE = 0.14f
+        const val OBS_MAX_RISE = 1.55f
+        const val OBS_WARP_MAX = 0.36f
     }
 }
