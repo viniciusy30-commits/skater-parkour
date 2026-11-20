@@ -4,6 +4,8 @@
 - Descidas: a animação agora é escolhida pela altura real da queda e sempre termina no chão de baixo, sem voltar para cima da borda nem se jogar bruscamente
 - Saltos por cima de obstáculos escolhem a animação que combina melhor com a altura do obstáculo
 - Pulo parado e pulo correndo ficaram bem mais baixos e naturais (antes passavam de 1 m)
+- Obstáculos até a metade do corpo agora são subidos sozinhos, só de andar para frente; apertar pular faz a manobra (por cima, giro, apoio nas mãos)
+- Cada manobra só é usada em obstáculos com largura e altura em que ela funciona: mãos e pés sempre encostam no obstáculo e não ficam no ar nem atravessam a parede
 
 #id 2026-11-20-d
 #titulo Parkour de verdade: obstáculos, degraus e descidas

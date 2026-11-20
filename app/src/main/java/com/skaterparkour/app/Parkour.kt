@@ -31,6 +31,9 @@ class ActionDef(
 ) {
     var clip: Clip? = null
     var z0 = 0f
+    /** Diferença aceita (altura real do obstáculo menos a altura da animação) sem a manobra ficar errada. */
+    var dhLo = -0.36f
+    var dhHi = 0.36f
     /** Posição z do quadril no último quadro (para saber se a descida termina depois da borda). */
     var endZ = 0f
 }
@@ -63,6 +66,10 @@ object Parkour {
                     side = p[12][0],
                     drop = p[1] == "D"
                 )
+                if (p.size >= 18) {
+                    d.dhLo = p[16].toFloat()
+                    d.dhHi = p[17].toFloat()
+                }
                 d.clip = clip
                 clip.hips(0f, tmp)
                 d.z0 = tmp[2]

@@ -89,6 +89,8 @@ class World {
     private var pendTop = 0f
     private var pendT = 0f
     private var pendDrop = false
+    /** true = subida automática ainda não iniciada (apertar pular troca por uma manobra). */
+    private var pendAutoObs = false
     private var pendEx = 0f
     private var pendEz = 0f
     private var pendFx = 0f
@@ -495,7 +497,7 @@ class World {
         for (b in blocks) {
             val rise = b.h - y
             if (rise < OBS_MIN_RISE || rise > OBS_MAX_RISE) continue
-            if (auto && rise > 0.43f) continue
+            if (auto && rise > AUTO_MAX_RISE) continue
             val minX = b.cx - b.sx / 2f
             val maxX = b.cx + b.sx / 2f
             val minZ = b.cz - b.sz / 2f
@@ -535,7 +537,7 @@ class World {
                 }
                 if (t2 < tFar) tFar = t2
             }
-            if (miss || tNear > tFar || tNear < 0f || tNear > (if (auto) 1.8f else OBS_REACH)) continue
+            if (miss || tNear > tFar || tNear < 0f || tNear > (if (auto) 1.5f else OBS_REACH)) continue
             if (tNear < bestT) {
                 bestT = tNear
                 bb = b
@@ -559,19 +561,20 @@ class World {
         if (hi - lo > 0.5f && (lat < lo + 0.15f || lat > hi - 0.15f)) return false
 
         val rise = b.h - y
-        val cls = if (rise < 0.43f) 0 else if (rise < 0.96f) 1 else 2
-        val running = speed > 1.8f
         var best: ActionDef? = null
         var bestScore = 1e9f
         for (d in defs) {
-            if (d.drop || d.cls != cls) continue
-            if (abs(rise - d.h) > OBS_WARP_MAX) continue
-            if (depth < d.dMin || depth > d.dMax + 0.04f) continue
+            if (d.drop) continue
+            // automático (só andar para frente): apenas subidas; botão de pular: manobras por cima, com subida como reserva
+            if (auto && !d.climb) continue
+            val dh = rise - d.h
+            if (dh < d.dhLo - 0.001f || dh > d.dhHi + 0.001f) continue
+            // a largura do obstáculo tem que caber na manobra (mãos e pés só tocam em cima do obstáculo)
+            if (depth < d.dMin || depth > d.dMax + 0.02f) continue
             if (dn < d.zf - d.z0 && findStart(d, dn) < 0f) continue
-            var sc = abs(d.v0 - speed) * 0.6f + abs(rise - d.h) * 6f + rnd.nextFloat() * 1.2f
+            var sc = abs(d.v0 - speed) * 0.6f + abs(dh) * 6f + rnd.nextFloat() * 1.2f
             if (d.name == lastDefName) sc += 2f
-            // correndo: prefere passar por cima; devagar: prefere subir
-            if (running == d.climb) sc += 1.5f
+            if (!auto && d.climb) sc += 3f
             if (sc < bestScore) {
                 bestScore = sc
                 best = d
@@ -586,6 +589,7 @@ class World {
         pendTop = b.h
         pendT = 0f
         pendDrop = false
+        pendAutoObs = auto
         lastDefName = d.name
         // já está na distância certa: começa agora
         if (dn <= d.zf - d.z0 + 0.02f) {
@@ -634,6 +638,7 @@ class World {
         val d = best ?: return false
         pend = d
         pendDrop = true
+        pendAutoObs = false
         pendFx = fx
         pendFz = fz
         pendEx = x + fx * ed
@@ -789,7 +794,7 @@ class World {
             return
         }
         // automático: degraus baixos e bordas (descidas) disparam a animação certa sem apertar nada
-        if (pend == null && grounded && windT < 0f && autoCd <= 0f && speed > 1.0f && targetSpeed > 0.8f) {
+        if (pend == null && grounded && windT < 0f && autoCd <= 0f && speed > 0.6f && targetSpeed > 0.5f) {
             if (planDrop() || planObstacle(true)) {
                 if (pend == null) {
                     updateSpecial(0f, 0)
@@ -804,7 +809,13 @@ class World {
                 updateSpecial(0f, 0)
                 return
             }
-            if (pend != null) continue
+            if (pend != null) {
+                // o botão troca a subida automática ainda não iniciada por uma manobra
+                if (pendAutoObs && !pendDrop) {
+                    pend = null
+                    pendAutoObs = false
+                } else continue
+            }
             if (grounded && windT < 0f && planObstacle()) {
                 if (pend == null) {
                     updateSpecial(0f, 0)
@@ -948,6 +959,8 @@ class World {
         // obstáculos: alcance da busca, alturas aceitas (m acima dos pés) e ajuste máximo da animação
         const val OBS_REACH = 3.6f
         const val OBS_MIN_RISE = 0.14f
+        // sobe sozinho (só andando para frente) obstáculos até a metade do corpo
+        const val AUTO_MAX_RISE = 0.70f
         const val OBS_MAX_RISE = 1.55f
         const val OBS_WARP_MAX = 0.36f
         const val OBS_DROP_WARP = 0.25f
