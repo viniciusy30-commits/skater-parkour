@@ -88,6 +88,17 @@ class World {
     private var pendAxisX = true
     private var pendTop = 0f
     private var pendT = 0f
+    private var pendDrop = false
+    private var pendEx = 0f
+    private var pendEz = 0f
+    private var pendFx = 0f
+    private var pendFz = 1f
+    private var autoCd = 0f
+    /** Deslocamento vertical (m) da câmera durante a ação, para ela acompanhar a subida/queda do corpo. */
+    var camLift = 0f
+    /** Altura do chão sob o personagem durante uma ação (para a sombra). */
+    var shadowY = 0f
+    private var obsHy0 = 0f
 
     private var clipJump: Clip? = null
     private var clipClimb: Clip? = null
@@ -192,6 +203,12 @@ class World {
         add(-24f, 10f, 3f, 2f, 0.26f, 0.95f, 0.85f, 0.30f)
         add(-24f, 12f, 3f, 2f, 0.62f, 0.30f, 0.65f, 0.95f)
         add(-24f, 14f, 3f, 2f, 1.30f, 0.98f, 0.55f, 0.25f)
+        // praça de descidas (z = -20): plataformas largas de alturas diferentes; corra para fora da borda
+        add(-14f, -20f, 3f, 5f, 0.30f, 0.95f, 0.85f, 0.30f)
+        add(-8f, -20f, 3f, 5f, 0.45f, 0.45f, 0.85f, 0.55f)
+        add(-2f, -20f, 3f, 5f, 0.62f, 0.30f, 0.65f, 0.95f)
+        add(4f, -20f, 3f, 5f, 0.80f, 0.70f, 0.55f, 0.95f)
+        add(10f, -20f, 3f, 5f, 0.95f, 0.95f, 0.45f, 0.55f)
         // muros altos nas bordas da arena
         add(0f, 36f, 14f, 1f, 2.4f, 0.75f, 0.75f, 0.80f)
         add(-30f, 6f, 1f, 14f, 1.8f, 0.70f, 0.72f, 0.78f)
@@ -212,6 +229,8 @@ class World {
         curDef = null
         actionKind = 0
         actWarp = 0f
+        camLift = 0f
+        autoCd = 0f
     }
 
     private fun groundAt(px: Float, pz: Float, feet: Float): Float {
@@ -464,7 +483,7 @@ class World {
     // ---------------------------------------------------------------- obstáculos (saltos, subidas, degraus)
 
     /** Procura o obstáculo à frente e escolhe a animação pela altura, profundidade e velocidade. */
-    private fun planObstacle(): Boolean {
+    private fun planObstacle(auto: Boolean = false): Boolean {
         if (defs.isEmpty()) return false
         val hy = if (speed > 0.8f) atan2(vx, vz) else yaw
         val fx = sin(hy)
@@ -476,6 +495,7 @@ class World {
         for (b in blocks) {
             val rise = b.h - y
             if (rise < OBS_MIN_RISE || rise > OBS_MAX_RISE) continue
+            if (auto && rise > 0.43f) continue
             val minX = b.cx - b.sx / 2f
             val maxX = b.cx + b.sx / 2f
             val minZ = b.cz - b.sz / 2f
@@ -515,7 +535,7 @@ class World {
                 }
                 if (t2 < tFar) tFar = t2
             }
-            if (miss || tNear > tFar || tNear < 0f || tNear > OBS_REACH) continue
+            if (miss || tNear > tFar || tNear < 0f || tNear > (if (auto) 1.8f else OBS_REACH)) continue
             if (tNear < bestT) {
                 bestT = tNear
                 bb = b
@@ -544,7 +564,7 @@ class World {
         var best: ActionDef? = null
         var bestScore = 1e9f
         for (d in defs) {
-            if (d.cls != cls) continue
+            if (d.drop || d.cls != cls) continue
             if (abs(rise - d.h) > OBS_WARP_MAX) continue
             if (depth < d.dMin || depth > d.dMax + 0.04f) continue
             if (dn < d.zf - d.z0 && findStart(d, dn) < 0f) continue
@@ -565,6 +585,7 @@ class World {
         pendAxisX = axisX
         pendTop = b.h
         pendT = 0f
+        pendDrop = false
         lastDefName = d.name
         // já está na distância certa: começa agora
         if (dn <= d.zf - d.z0 + 0.02f) {
@@ -573,6 +594,71 @@ class World {
             return ok
         }
         return true
+    }
+
+    /** Procura uma borda à frente (chão que fica bem mais baixo) e escolhe a animação de descida pela altura da queda. */
+    private fun planDrop(): Boolean {
+        if (defs.isEmpty() || y < 0.2f) return false
+        val hy = atan2(vx, vz)
+        val fx = sin(hy)
+        val fz = cos(hy)
+        val ed = edgeDist(0f, fx, fz)
+        if (ed < 0f) return false
+        // a borda precisa ser larga e quase perpendicular: raios paralelos dos dois lados acham a borda perto da mesma distância
+        val el = edgeDist(0.4f, fx, fz)
+        val er = edgeDist(-0.4f, fx, fz)
+        if (el < 0f || er < 0f || abs(el - ed) > 0.3f || abs(er - ed) > 0.3f) return false
+        // chão de pouso: três pontos depois da borda precisam estar na mesma altura
+        val lx = x + fx * (ed + 0.9f)
+        val lz = z + fz * (ed + 0.9f)
+        val g1 = groundAt(lx, lz, y - 0.2f)
+        val g2 = groundAt(x + fx * (ed + 0.5f), z + fz * (ed + 0.5f), y - 0.2f)
+        val g3 = groundAt(x + fx * (ed + 1.4f), z + fz * (ed + 1.4f), y - 0.2f)
+        if (abs(g1 - g2) > 0.12f || abs(g1 - g3) > 0.12f) return false
+        val dh = y - g1
+        if (dh < 0.22f || dh > 1.0f) return false
+        var best: ActionDef? = null
+        var bestScore = 1e9f
+        for (d in defs) {
+            if (!d.drop) continue
+            if (abs(dh - d.h) > OBS_DROP_WARP) continue
+            if (ed < d.zf - d.z0 && findStart(d, ed) < 0f) continue
+            var sc = abs(d.v0 - speed) * 0.6f + abs(dh - d.h) * 3f + rnd.nextFloat() * 1.2f
+            if (d.name == lastDefName) sc += 2f
+            if (sc < bestScore) {
+                bestScore = sc
+                best = d
+            }
+        }
+        val d = best ?: return false
+        pend = d
+        pendDrop = true
+        pendFx = fx
+        pendFz = fz
+        pendEx = x + fx * ed
+        pendEz = z + fz * ed
+        pendTop = g1
+        pendT = 0f
+        lastDefName = d.name
+        if (ed <= d.zf - d.z0 + 0.02f) {
+            val ok = startPlanned(d, ed)
+            pend = null
+            return ok
+        }
+        return true
+    }
+
+    /** Distância até a primeira borda onde o chão cai pelo menos 0,2 m, andando na direção (fx, fz) a partir de um ponto deslocado de lado; -1 se não há. */
+    private fun edgeDist(side: Float, fx: Float, fz: Float): Float {
+        val sx = x + fz * side
+        val sz = z - fx * side
+        var t = 0.05f
+        while (t <= 2.4f) {
+            val g = groundAt(sx + fx * t, sz + fz * t, y)
+            if (g < y - 0.2f) return t
+            t += 0.05f
+        }
+        return -1f
     }
 
     /** Tempo da animação em que o quadril já percorreu a distância que falta; -1 se está perto demais. */
@@ -595,7 +681,8 @@ class World {
     private fun updatePending(dt: Float): Boolean {
         val d = pend ?: return false
         pendT += dt
-        val dn = if (pendAxisX) (x - pendPlane) * pendNx else (z - pendPlane) * pendNz
+        val dn = if (pendDrop) (pendEx - x) * pendFx + (pendEz - z) * pendFz
+        else if (pendAxisX) (x - pendPlane) * pendNx else (z - pendPlane) * pendNz
         val zfa = d.zf - d.z0
         if (pendT > 1.6f || !grounded || dn < 0.08f || (pendT > 0.4f && speed < 0.5f && targetSpeed < 0.3f)) {
             pend = null
@@ -616,20 +703,22 @@ class World {
         curDef = d
         actionClip = c
         actionKind = 1
-        obsFx = -pendNx
-        obsFz = -pendNz
+        obsFx = if (pendDrop) pendFx else -pendNx
+        obsFz = if (pendDrop) pendFz else -pendNz
         obsX0 = x
         obsZ0 = z
         obsY0 = y
         obsTop = pendTop
-        obsDelta = (pendTop - y) - d.h
+        obsDelta = if (d.drop) d.h - (y - pendTop) else (pendTop - y) - d.h
         c.hips(0f, tmpP)
         apx0 = tmpP[0]
         apz0 = tmpP[2]
         c.hips(tS, tmpP)
         obsH0x = tmpP[0]
         obsH0z = tmpP[2]
+        obsHy0 = tmpP[1]
         actWarp = 0f
+        camLift = 0f
         vx = 0f; vz = 0f; vy = 0f
         speed = 0f
         mode = 4
@@ -662,7 +751,10 @@ class World {
         turnTo(atan2(obsFx, obsFz), min(1f, dt * 16f))
         // sobe o corpo até a altura real do obstáculo (mãos e pés encostam em cima dele)
         val up = smooth((t - (d.c0 - 0.2f)) / 0.2f)
-        actWarp = if (d.climb) obsDelta * up else obsDelta * up * (1f - smooth((t - d.c1) / 0.2f))
+        actWarp = if (d.drop) obsDelta * smooth((t - d.c0) / (c.duration - d.c0).coerceAtLeast(0.05f))
+        else if (d.climb) obsDelta * up else obsDelta * up * (1f - smooth((t - d.c1) / 0.2f))
+        camLift = tmpP[1] - obsHy0 + actWarp
+        shadowY = groundAt(x, z, obsY0 + 0.05f)
         if (modeT >= c.duration - 0.04f) {
             val ve = d.ve
             vx = obsFx * ve
@@ -671,7 +763,7 @@ class World {
             pushOut()
             x = x.coerceIn(-BOUND, BOUND)
             z = z.coerceIn(-BOUND, BOUND)
-            val feet = if (d.climb) obsTop + 0.05f else obsY0 + 0.1f
+            val feet = if (d.climb) obsTop + 0.05f else if (d.drop) obsTop + 0.1f else obsY0 + 0.1f
             val gy = groundAt(x, z, feet)
             offY = gy - obsY0
             y = gy
@@ -679,15 +771,27 @@ class World {
             grounded = true
             mode = 0
             modeT = 0f
+            camLift = 0f
+            autoCd = 0.6f
         }
     }
 
     // ---------------------------------------------------------------- movimento normal
 
     private fun updateNormal(dt: Float, presses: Int) {
+        if (autoCd > 0f) autoCd -= dt
         if (pend != null && updatePending(dt)) {
             updateSpecial(0f, 0)
             return
+        }
+        // automático: degraus baixos e bordas (descidas) disparam a animação certa sem apertar nada
+        if (pend == null && grounded && windT < 0f && autoCd <= 0f && speed > 1.0f && targetSpeed > 0.8f) {
+            if (planDrop() || planObstacle(true)) {
+                if (pend == null) {
+                    updateSpecial(0f, 0)
+                    return
+                }
+            }
         }
         for (i in 0 until presses) {
             val dbl = timeNow - lastPress < DOUBLE_T
@@ -840,5 +944,6 @@ class World {
         const val OBS_MIN_RISE = 0.14f
         const val OBS_MAX_RISE = 1.55f
         const val OBS_WARP_MAX = 0.36f
+        const val OBS_DROP_WARP = 0.25f
     }
 }

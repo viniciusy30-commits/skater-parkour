@@ -692,7 +692,7 @@ class GameRenderer(private val ctx: Context) : GLSurfaceView.Renderer {
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
         GLES30.glDepthMask(false)
         GLES30.glDisable(GLES30.GL_CULL_FACE)
-        val h = if (world.grounded) world.y else world.supportY
+        val h = if (world.mode == 4 && world.actionKind == 1) world.shadowY else if (world.grounded) world.y else world.supportY
         val s = 0.55f - (world.y - h).coerceIn(0f, 1.5f) * 0.12f
         Matrix.setIdentityM(modelM, 0)
         Matrix.translateM(modelM, 0, world.x, h + 0.012f, world.z)

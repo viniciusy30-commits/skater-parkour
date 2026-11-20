@@ -25,7 +25,9 @@ class ActionDef(
     /** Velocidade do quadril no começo e no fim da animação. */
     val v0: Float,
     val ve: Float,
-    val side: Char
+    val side: Char,
+    /** true = descida: corre para fora de uma borda e cai até um chão mais baixo (h = altura da queda). */
+    val drop: Boolean = false
 ) {
     var clip: Clip? = null
     var z0 = 0f
@@ -56,7 +58,8 @@ object Parkour {
                     c1 = p[8].toFloat() / fps,
                     v0 = p[9].toFloat(),
                     ve = p[10].toFloat(),
-                    side = p[12][0]
+                    side = p[12][0],
+                    drop = p[1] == "D"
                 )
                 d.clip = clip
                 clip.hips(0f, tmp)
