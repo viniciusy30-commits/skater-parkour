@@ -88,7 +88,7 @@ async function bootMerc(SH){
   const VS_CM=`#version 300 es
 precision highp float;precision highp int;
 layout(location=0) in vec4 aPos;layout(location=1) in vec4 aNrm;layout(location=2) in vec2 aUV;layout(location=3) in uvec4 aJ;layout(location=4) in vec4 aW;
-uniform sampler2D uBones;uniform vec3 uCtr;uniform vec3 uExt;uniform mat4 uVP;uniform vec3 uCap[8];uniform vec3 uCapB[8];
+uniform sampler2D uBones;uniform vec3 uCtr;uniform vec3 uExt;uniform mat4 uVP;uniform mat4 uAct;uniform vec3 uCap[8];uniform vec3 uCapB[8];
 out vec2 vUV;out vec3 vN;out vec3 vP;out float vLow;
 mat4 B(uint i){int r=int(i);return mat4(texelFetch(uBones,ivec2(0,r),0),texelFetch(uBones,ivec2(1,r),0),texelFetch(uBones,ivec2(2,r),0),texelFetch(uBones,ivec2(3,r),0));}
 vec3 rotArc(vec3 v,vec3 u0,vec3 u1){vec3 k=cross(u0,u1);float c=dot(u0,u1);return v*c+cross(k,v)+k*dot(k,v)/(1.+max(c,-.99));}
@@ -99,7 +99,7 @@ vec3 coll(vec3 p,vec3 pb,vec3 ab0,vec3 bb0,vec3 ap0,vec3 bp0){vec3 ab=bb0-ab0;fl
 void main(){vec4 p=vec4(uCtr+aPos.xyz*uExt,1.);mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+B(aJ.z)*aW.z+B(aJ.w)*aW.w;
   vec4 w=m*p;float r=aPos.w*.12;float c=smoothstep(.07,.088,r);
   if(c>0.){vec3 q=w.xyz;for(int s=0;s<2;s++){for(int k=0;k<2;k++){int o=s*4+k;q=coll(q,p.xyz,uCapB[o],uCapB[o+1],uCap[o],uCap[o+1]);}}w.xyz=mix(w.xyz,q,c);}
-  vLow=aPos.w>.001?1.:0.;vP=w.xyz;vN=mat3(m)*normalize(aNrm.xyz);vUV=aUV;gl_Position=uVP*w;}`;
+  w=uAct*w;vLow=aPos.w>.001?1.:0.;vP=w.xyz;vN=mat3(uAct)*mat3(m)*normalize(aNrm.xyz);vUV=aUV;gl_Position=uVP*w;}`;
   const FS_LM=FS_L.replace('in vec2 vUV;','in float vLow;in vec2 vUV;').replace('void main(){','void main(){if(vLow>.5&&!gl_FrontFacing)discard;');
   const PC=prg(VS_CM,FS_LM),PW=prg(VS_W,FS_L),PG=prg(VS_G,FS_G);
   const capIdx=man.cap.flat(),capBuf=new Float32Array(24),capBind=new Float32Array(24);
@@ -160,42 +160,7 @@ void main(){vec4 p=vec4(uCtr+aPos.xyz*uExt,1.);mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+
   function setClip(i,keep){if(i===cur&&!keep)return;
     if(clips[cur]&&!restMode){prev={q:new Float32Array(sQ),pt:new Float32Array(sP),ci:cur,t0:t};blend=0}
     cur=i;t=0}
-  const attM=man.weapons.map(w=>new Float32Array(w.m));
-  function draw(){
-    const dpr=Math.min(window.devicePixelRatio||1,2),w=Math.floor(cv.clientWidth*dpr),h=Math.floor(cv.clientHeight*dpr);if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
-    gl.viewport(0,0,cv.width,cv.height);gl.clearColor(.035,.039,.055,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
-    const P=M4.persp(.5,cv.width/cv.height,.2,40);P[9]=-SH.insetY();P[8]=SH.insetX();
-    const DD=SH.dist()*1.656,cp=Math.cos(cam.pitch),eye=[cam.tx+Math.sin(cam.yaw)*cp*DD,cam.ty+Math.sin(cam.pitch)*DD,Math.cos(cam.yaw)*cp*DD];
-    const V=M4.look(eye,[cam.tx,cam.ty,0],[0,1,0]),VP=M4.mul(new Float32Array(16),P,V);
-    gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),W[PEL*16+12],W[PEL*16+14]);gl.uniform1f(U(PG,'uGrid'),1);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
-    for(let i=0;i<8;i++){const k=capIdx[i];capBuf[i*3]=W[k*16+12];capBuf[i*3+1]=W[k*16+13];capBuf[i*3+2]=W[k*16+14]}
-    gl.useProgram(PC);gl.uniform3fv(U(PC,'uCap'),capBuf);gl.uniform3fv(U(PC,'uCapB'),capBind);gl.uniformMatrix4fv(U(PC,'uVP'),false,VP);gl.uniform3fv(U(PC,'uCtr'),man.char.ctr);gl.uniform3fv(U(PC,'uExt'),man.char.ext);gl.uniform3fv(U(PC,'uCam'),eye);gl.uniform1f(U(PC,'uMetal'),0);gl.uniform1f(U(PC,'uTm'),0);gl.uniform1f(U(PC,'uRune'),0);gl.uniform1f(U(PC,'uRim'),0);   // mesmo visual do Guerreiro
-    gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,boneTex);gl.uniform1i(U(PC,'uBones'),1);
-    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tc);gl.uniform1i(U(PC,'uTex'),0);
-    gl.bindVertexArray(mc.vao);gl.drawElements(gl.TRIANGLES,mc.n,gl.UNSIGNED_INT,0);
-    if(showW){gl.useProgram(PW);gl.uniformMatrix4fv(U(PW,'uVP'),false,VP);gl.uniform3fv(U(PW,'uCam'),eye);gl.uniform1f(U(PW,'uMetal'),.35);gl.uniform1f(U(PW,'uRim'),0);gl.uniform1f(U(PW,'uTm'),0);gl.uniform1f(U(PW,'uRune'),0);
-      gl.bindTexture(gl.TEXTURE_2D,tw);gl.uniform1i(U(PW,'uTex'),0);
-      mw.forEach((m,i)=>{M4.mul(wm,W.subarray(m.w.bone*16,m.w.bone*16+16),attM[i]);gl.uniform3fv(U(PW,'uCtr'),m.w.ctr);gl.uniform3fv(U(PW,'uExt'),m.w.ext);gl.uniformMatrix4fv(U(PW,'uM'),false,wm);gl.bindVertexArray(m.vao);gl.drawElements(gl.TRIANGLES,m.n,gl.UNSIGNED_INT,0)})}
-    gl.bindVertexArray(null)}
-  let last=performance.now();
-  function frame(now){const dt=Math.min((now-last)/1000,.1);last=now;const c=clips[cur],dur=cdur(c);
-    if(playing){t+=dt*speed;if(t>=dur){if(loop)t%=dur;else t=dur}}
-    if(blend<1)blend=Math.min(1,blend+dt/blendDur);
-    if(spin)cam.yaw+=dt*.6;
-    updatePose();draw()}
-  const CATS=man.cats.filter(c=>clips.some(x=>x.cat===c));
-  const API={id:'mercenario',title:'Mercenário',
-    clips:clips.map(c=>({name:c.name,cat:c.cat,dur:cdur(c),nf:c.nf})),cats:CATS,kit:null,
-    frame,state:()=>({cur,t,dur:cdur(clips[cur]),playing,loop,speed,skill:null}),
-    setClip(i){setClip(i);playing=true},seek(f){t=f*cdur(clips[cur]);playing=false},setPlaying(b){if(b&&!loop&&t>=cdur(clips[cur])-1e-3)t=0;playing=b},setLoop(b){loop=b},setSpeed(x){speed=x},
-    toggles:[
-      {id:'w',label:'Armas',sub:'Mostrar as duas lâminas',icon:'i-swords',get:()=>showW,set:v=>{showW=v}},
-      {id:'spin',label:'Girar câmera',sub:'Órbita automática em volta do personagem',icon:'i-rotate',get:()=>spin,set:v=>{spin=v}},
-      {id:'tp',label:'Pose de repouso',sub:'Mostra o modelo parado, sem animação',icon:'i-person',get:()=>restMode,set:v=>{restMode=v}}],
-    actions:[],
-    dispose(){playing=false;prev=null}};
-  return API}
+//__MERC_TAIL__
 
 // ---------------------------------------------------------------- personagens
 const CHARS={
@@ -324,7 +289,8 @@ const UI={
   showInfo(s){$('skinfo').innerHTML=`<b>${s.nome}</b><div class="tags"><span class="tg">${s.tag}</span>${s.cd?`<span class="tg">Recarga ${s.cd}s</span>`:'<span class="tg">Sem recarga</span>'}${s.custo?`<span class="tg">Custo ${s.custo}</span>`:''}</div>${s.desc}`},
   syncToggles(){for(const[t,b]of this.tglEls){const v=!!t.get();if(b._v!==v){b._v=v;b.classList.toggle('on',v)}}},
   sync(force){const e=this.eng;if(!e)return;const s=e.state(),C=this.cache;
-    if(s.cur!==this.cur||force){const c=e.clips[s.cur];this.cur=s.cur;this.rows.forEach((r,i)=>r.classList.toggle('on',i===s.cur));$('nowName').textContent=c.name;$('nowMeta').textContent=`${c.cat} · ${c.nf} quadros · ${c.dur.toFixed(2)}s`;$('tDur').textContent=c.dur.toFixed(2)+'s';this.revealCur()}
+    if(e.kit&&(s.skill||null)!==C.lblSkill){C.lblSkill=s.skill||null;const k=s.skill&&e.kit.find(x=>x.id===s.skill);if(k){$('nowName').textContent=k.nome;$('nowMeta').textContent=k.tag+' · '+(k.cd?'recarga '+k.cd+'s':'sem recarga')}else this.cur=-1}
+    if(s.cur!==this.cur||force){const c=e.clips[s.cur];this.cur=s.cur;this.rows.forEach((r,i)=>r.classList.toggle('on',i===s.cur));if(!(e.kit&&s.skill)){$('nowName').textContent=c.name;$('nowMeta').textContent=`${c.cat} · ${c.nf} quadros · ${c.dur.toFixed(2)}s`}$('tDur').textContent=c.dur.toFixed(2)+'s';this.revealCur()}
     if(s.playing!==C.playing||force){C.playing=s.playing;document.body.classList.toggle('playing',s.playing);useHref($('bPlay'),s.playing?'i-pause':'i-play')}
     if(s.loop!==C.loop||force){C.loop=s.loop;$('bLoop').classList.toggle('on',s.loop)}
     if(s.speed!==C.speed||force){C.speed=s.speed;$('bSpd').textContent=fmtX(s.speed);if(this.segEl)[...this.segEl.children].forEach(b=>b.classList.toggle('on',+b.dataset.v===s.speed))}

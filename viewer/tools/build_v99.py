@@ -136,6 +136,7 @@ app_js = '\n'.join(x for x in app if x is not None)
 css = open(os.path.join(SRC, 'shell.css'), encoding='utf8').read()
 body = open(os.path.join(SRC, 'body.html'), encoding='utf8').read()
 shell = open(os.path.join(SRC, 'shell.js'), encoding='utf8').read()
+shell = shell.replace('//__MERC_TAIL__', open(os.path.join(SRC, 'merc_tail.js'), encoding='utf8').read())
 b64 = lambda b: base64.b64encode(b).decode('ascii')
 html = f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8">
