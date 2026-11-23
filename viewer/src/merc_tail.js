@@ -267,20 +267,26 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     {n:'Spear L',f0:6,f1:26,fps:40,h:.3,air:0},{n:'Skill D',f0:2,f1:22,fps:40,h:.28,air:0},{n:'Upper ALL',f0:6,f1:36,fps:45,h:.34,air:.45},{n:'Skill E Attack',f0:4,f1:26,fps:40,h:.32,air:0},
     {n:'Dash B Spiral',f0:6,f1:32,fps:45,h:.32,air:.35},{n:'Skill H',f0:6,f1:28,fps:40,h:.32,air:0},{n:'Rapid ALL',f0:12,f1:46,fps:60,h:.3,air:0},{n:'Skill A',f0:10,f1:36,fps:45,h:.32,air:.3},
     {n:'Skill B',f0:8,f1:30,fps:42,h:.3,air:0},{n:'Skill C',f0:8,f1:30,fps:42,h:.3,air:.2},{n:'Skill J ALL',f0:6,f1:30,fps:42,h:.3,air:0},{n:'Spear R',f0:8,f1:26,fps:42,h:.28,air:0}];
-  const ULT_K=18,U_TH=.62,U_CL0=.5,U_CLD=.075,U_VAN=.95,U_AIR=U_CL0+ULT_K*U_CLD+.95,U_LEAP=.6,U_APEX=.34,U_SLAM=.42,U_H=3.3;
-  const U_DIVE=U_AIR+U_LEAP+U_APEX,U_IMP=U_DIVE+U_SLAM;
+  const ULT_K=18,U_TH=.62,U_CL0=.55,U_CLD=.075,U_VAN=.55,U_AIR=U_CL0+ULT_K*U_CLD+.7,U_SPIN=.62,U_SLAM=.42,U_H=3.6,U_TOT=6*Math.PI;
+  const U_DIVE=U_AIR+U_SPIN,U_IMP=U_DIVE+U_SLAM;
   DEF.ult={nome:'Mil Lâminas: Dança do Vazio',tag:'ULTIMATE',custom:true,
     start(r){r.el=0;r.q=[];r.lines=[];r.imp=false;r.gt=0;r.cuts=0;trailLife=.4;trailCol=MG;banner(this.nome,this.tag,true);SFX.rise(.8);trailBoost=.6;blendDur=.1;
       setClipRaw(CI['Spear R'],0);flash(.15,'#ffd9a8');ring([act.x,.03,act.z],3,.3,.05,.6,FIRE_C,.7);ring([act.x,.03,act.z],3.6,.3,.05,.7,ICE_C,.7);
       r.bz0=act.z;
       for(let k=0;k<ULT_K;k++)r.q.push({t:U_CL0+k*U_CLD,fn:()=>ultClone(r,k)});
-      r.q.push({t:U_VAN,fn:()=>{act.vis=false;const p=[act.x,.9,act.z];burst(p,30,4.5,.04,FIRE_C,.5,-1);burst(p,30,4.5,.04,ICE_C,.5,-1);ring([act.x,.03,act.z],.2,2.4,.06,.5,WH,.8);flash(.2,'#ffffff');SFX.dash();BL.forEach(b=>{b.pt=null;b.hist.length=0})}});
-      // o duelista reaparece junto do inimigo, agachado, e salta
-      r.q.push({t:U_AIR,fn:()=>{BL.forEach(b=>{b.pt=null;b.hist.length=0});act.x=TG.x;act.z=TG.z-.95;act.y=0;act.yaw=0;act.vis=true;setClipRaw(CI['Skill G Finishing ALL'],14);blendDur=.04;
-        flash(.3,'#ffffff');SFX.rise(.9);ring([act.x,.03,act.z],.2,2.8,.07,.6,FIRE_C,.9);ring([act.x,.03,act.z],.2,2.2,.06,.55,ICE_C,.9);
-        burst([act.x,.2,act.z],26,3.5,.04,FIRE_C,.5,-1,1.5);burst([act.x,.2,act.z],26,3.5,.04,ICE_C,.5,-1,1.5)}});
-      r.q.push({t:U_AIR+U_LEAP,fn:()=>{slow(.3,.3);flash(.12,'#ffffff');SFX.ping();const cc=[act.x,act.y+.9,act.z];arc(cc,.95,.4,5.4,.05,.9,FIRE_C,{grow:.2});arc(cc,.95,3.54,5.4,.05,.9,ICE_C,{grow:.2});arc(cc,1.3,1.2,4,.035,.8,WH,{grow:.25,a:.7});
-        r.lines.push(line([TG.x,0,TG.z],[TG.x,7,TG.z],.05,3,WH,{grow:.06,a:.45}))}});
+      // o duelista some em velocidade: imagens residuais disparadas para os lados + linhas; um clone assume o lugar dele e ja emenda o ataque
+      r.q.push({t:U_VAN,fn:()=>{const p=[act.x,.9,act.z];
+        for(let q=0;q<6;q++){const sd=q%2?1:-1,o=(1+q*.45)*sd;addGhost(skFromClip(CI['Spear R'],20),{life:.2+q*.025,mv:.14+q*.015,col:q%2?ICE_C:FIRE_C,a:.55-q*.05,A:{x:act.x,y:0,z:act.z,yaw:0},to:{x:act.x+o,y:q%3?0:.4,z:act.z+.5+q*.25}})}
+        for(let q=0;q<5;q++){const d=vnorm([rr(-1,1),rr(-.2,.6),rr(-.4,.4)]);line(p,vadd(p,vmul(d,3.5)),.035,.22,q%2?ICE_C:FIRE_C,{grow:.02,a:.9})}
+        burst(p,30,5.5,.04,FIRE_C,.4,-1);burst(p,30,5.5,.04,ICE_C,.4,-1);ring([act.x,.03,act.z],.2,2.2,.06,.4,WH,.8);flash(.22,'#ffffff');shake(.12);SFX.dash();SFX.swish(1.4);
+        act.vis=false;BL.forEach(b=>{b.pt=null;b.hist.length=0})}});
+      // reaparece em cima do inimigo: flash + imagens residuais subindo do chao ate ele
+      r.q.push({t:U_AIR,fn:()=>{BL.forEach(b=>{b.pt=null;b.hist.length=0});act.x=TG.x;act.z=TG.z-.4;act.y=U_H;act.yaw=0;act.vis=true;setClipRaw(CI['Skill G Finishing ALL'],26);blendDur=.03;
+        for(let q=0;q<6;q++)addGhost(skFromClip(CI['Skill G Finishing ALL'],30),{life:.28+q*.04,mv:.1+q*.02,col:q%2?ICE_C:FIRE_C,a:.55-q*.04,A:{x:TG.x+(q%2?.5:-.5)*(q/6),y:U_H*(q/7),z:TG.z-.4,yaw:0},to:{x:TG.x,y:U_H,z:TG.z-.4}});
+        flash(.5,'#ffffff');shake(.25);SFX.rise(.6);SFX.ping();SFX.swish(1.6);
+        const cc=[act.x,act.y+.9,act.z];arc(cc,.8,0,6.28,.06,.3,WH,{grow:.06,a:.9});arc(cc,.6,.4,5.4,.035,.7,FIRE_C,{grow:.2});arc(cc,.6,3.54,5.4,.035,.7,ICE_C,{grow:.2});
+        r.lines.push(line([TG.x,0,TG.z-.4],[TG.x,U_H+.8,TG.z-.4],.06,.45,WH,{grow:.03,a:.8}),line([TG.x,0,TG.z],[TG.x,8,TG.z],.025,3,WH,{grow:.06,a:.3}));
+        burst(cc,34,4.5,.04,FIRE_C,.5,-1);burst(cc,34,4.5,.04,ICE_C,.5,-1)}});
       r.q.push({t:U_DIVE,fn:()=>{slow(.5,.22);SFX.rise(.22);SFX.dash();flash(.1,'#ffffff')}});
     },
     tick(r,dt){r.el+=dt;const e=r.el;while(r.q.length&&r.q[0].t<=e)r.q.shift().fn();
@@ -290,16 +296,14 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
         if(e>.45&&!r.th){r.th=1;const c=tgPoint();line(vadd(c,[0,0,-1.1]),vadd(c,[0,0,.4]),.05,.4,WH,{grow:.04,a:.9});shake(.08);SFX.swish(1.2)}}
       else if(e<U_AIR){ // enxame de clones: a camera orbita devagar e aperta
         const u=ss(U_VAN,U_AIR,e);CAMF.dim=.55;CAMF.zt=lerp(1.15,1.4,u);CAMF.yawk=lerp(.75,2.0,u);act.vis=false;CAMF.roll=Math.sin(e*3)*.015}
-      else if(e<U_DIVE){ // salto: agachado -> sobe girando -> apice
-        act.vis=true;CAMF.roll=0;
-        if(e<U_AIR+U_LEAP){const u=(e-U_AIR)/U_LEAP;t=lerp(14,40,u)/30;act.y=U_H*eo(u);act.z=lerp(TG.z-.95,TG.z-.4,ss(0,1,u));CAMF.dim=lerp(.55,.2,u);CAMF.zt=lerp(1.4,1.0,ss(0,1,u));CAMF.yawk=lerp(2.0,.5,ss(0,1,u));trailBoost=.7}
-        else{const v=(e-U_AIR-U_LEAP)/U_APEX;t=lerp(40,44,v)/30;act.y=U_H+Math.sin(e*8)*.03;act.z=TG.z-.4;CAMF.zt=lerp(1.0,.88,v);CAMF.yawk=lerp(.5,.1,v);trailBoost=.3;
-          r.gt-=dt;if(r.gt<=0){r.gt=.02;for(let i=0;i<2;i++){const b=BL[i];if(b.pt)spark(vadd(b.tip,[rr(-.4,.4),rr(-.2,.4),rr(-.4,.4)]),[0,0,0],.26,.03,AUC[i],1,0,0)}}
-          const k=ss(0,1,v);if(BL[0].pt&&BL[1].pt){spark(BL[0].tip,[0,0,0],.05,.16*k,ICE_C,.9*k,0,0);spark(BL[1].tip,[0,0,0],.05,.16*k,FIRE_C,.9*k,0,0)}}
-        act.x=TG.x;act.yaw=0}
+      else if(e<U_DIVE){ // no ar: gira em volta do proprio eixo com as laminas abertas
+        act.vis=true;CAMF.roll=0;const p=(e-U_AIR)/U_SPIN,pt=(e-U_AIR)/(U_SPIN+U_SLAM);
+        t=lerp(26,44,ss(0,1,p))/30;act.y=U_H+.35*Math.sin(clp(p,0,1)*3.1416);act.x=TG.x;act.z=TG.z-.4;act.yaw=U_TOT*(1-Math.pow(1-pt,2));
+        CAMF.dim=lerp(.55,.12,ss(0,.5,p));CAMF.zt=lerp(1.0,.8,ss(0,1,p));CAMF.yawk=lerp(2.0,.3,ss(0,1,p));trailBoost=.5;
+        r.gt-=dt;if(r.gt<=0){r.gt=.055;ghostNow({life:.16,col:Math.random()<.5?FIRE_C:ICE_C,a:.4})}}
       else if(e<U_IMP){ // golpe descendente: o corpo gira para a frente enquanto cai e corta de cima para baixo
-        const w=(e-U_DIVE)/U_SLAM;act.x=TG.x;act.yaw=0;act.z=lerp(TG.z-.4,TG.z-.5,w);act.y=U_H*(1-Math.pow(clp(w,0,1),2.1));t=lerp(44,56,Math.pow(clp(w,0,1),.85))/30;trailBoost=1;
-        CAMF.zt=lerp(.88,1.2,w);CAMF.dim=.2*(1-w);CAMF.yawk=0;
+        const w=(e-U_DIVE)/U_SLAM,pt=(e-U_AIR)/(U_SPIN+U_SLAM);act.x=TG.x;act.yaw=U_TOT*(1-Math.pow(clp(1-pt,0,1),2));act.z=lerp(TG.z-.4,TG.z-.5,w);act.y=(U_H+.0)*(1-Math.pow(clp(w,0,1),2.1));t=lerp(44,56,Math.pow(clp(w,0,1),.85))/30;trailBoost=1;
+        CAMF.zt=lerp(.8,1.2,w);CAMF.dim=.12*(1-w);CAMF.yawk=lerp(.3,0,w);
         for(let i=0;i<2;i++){const b=BL[i];if(b.pt){const p=b.tip;line(p,[p[0]+rr(-.08,.08),p[1]+rr(1.2,2.6),p[2]+rr(-.08,.08)],.035,.14,AUC[i],{grow:.03})}}}
       if(e>=U_IMP&&!r.imp){r.imp=true;r.ie=e;act.y=0;act.x=TG.x;act.z=TG.z-.5;act.yaw=0;const c=[TG.x,.5,TG.z];CAMF.yawk=0;
         flash(.4,'#fff4e6');shake(1.6);slow(.1,.6);CAMF.zt=1.6;CAMF.dim=0;SFX.boom(1.6);SFX.shatter();SFX.ping();SFX.hit(1.6);
@@ -321,8 +325,8 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
       r.lines&&r.lines.forEach(l=>{l.life=Math.min(l.life,l.age+.3)})}};
   // um clone: chega rapido ao alvo (os primeiros saem do duelista, os demais vem de fora, de todos os lados) e executa a propria tecnica
   function ultClone(r,k){const T=ULT_TECH[k%ULT_TECH.length],c=tgPoint(),a=k*2.4+.4,R=k%2?1.35:.95;
-    const P=[c[0]+Math.cos(a)*R,T.air,c[2]+Math.sin(a)*R],yaw=Math.atan2(c[0]-P[0],c[2]-P[2]),col=k%2?ICE_C:FIRE_C,ci_=CI[T.n];
-    const src=k<4?{x:act.x,y:act.y,z:act.z}:{x:c[0]+Math.cos(a)*3.6,y:0,z:c[2]+Math.sin(a)*3.6},mv=k<4?.16:.2;
+    const P=k===0?[act.x,0,act.z]:[c[0]+Math.cos(a)*R,T.air,c[2]+Math.sin(a)*R],yaw=k===0?0:Math.atan2(c[0]-P[0],c[2]-P[2]),col=k%2?ICE_C:FIRE_C,ci_=CI[T.n];
+    const src=k<4?{x:act.x,y:act.y,z:act.z}:{x:c[0]+Math.cos(a)*3.6,y:0,z:c[2]+Math.sin(a)*3.6},mv=k===0?.02:(k<4?.16:.2);
     addGhost(skFromClip(ci_,T.f0),{life:mv+.6,mv,hold:.78,col,a:.85,A:{x:src.x,y:src.y,z:src.z,yaw},to:{x:P[0],y:P[1],z:P[2]},anim:{ci:ci_,f0:T.f0,f1:T.f1,fps:T.fps}});
     line([src.x,.9,src.z],[P[0],P[1]+.9,P[2]],.045,.28,col,{grow:.03,a:.75});SFX.swish(1+k*.04);
     r.q.push({t:r.el+mv,fn:()=>{burst([P[0],P[1]+.8,P[2]],10,2.4,.03,col,.3,-1)}});
@@ -386,7 +390,7 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     const eye=[tx+Math.sin(cam.yaw+yk)*cp*DD,ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw+yk)*cp*DD];
     const V=M4.look(eye,[tx,ty,tz],[Math.sin(au?CAMF.roll:0),Math.cos(au?CAMF.roll:0),0]),VP=M4.mul(new Float32Array(16),P,V);VPm=VP;camE=eye;camR=[V[0],V[4],V[8]];camU=[V[1],V[5],V[9]];
     gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.x+W[PEL*16+12],act.z+W[PEL*16+14]);gl.uniform2f(U(PG,'uOff'),cam.fx||0,cam.fz||0);SH.mapApply(U,PG,1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
+    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.vis?act.x+W[PEL*16+12]:1e4,act.z+W[PEL*16+14]);gl.uniform2f(U(PG,'uOff'),cam.fx||0,cam.fz||0);SH.mapApply(U,PG,1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
     buildAct(actM,act.x,act.y,act.z,act.yaw);
     if(act.vis){
     for(let i=0;i<8;i++){const k=capIdx[i];capBuf[i*3]=W[k*16+12];capBuf[i*3+1]=W[k*16+13];capBuf[i*3+2]=W[k*16+14]}
