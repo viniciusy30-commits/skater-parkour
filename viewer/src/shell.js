@@ -83,20 +83,18 @@ async function bootMerc(SH){
   const U=(p,n)=>gl.getUniformLocation(p,n);
   function sh(t,s){const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(x));return x}
   function prg(v,f){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,v));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,f));gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p}
-  // vertex shader do Mercenario: skinning + colisao do sobretudo com as pernas (mantem a folga que cada vertice tinha no bind)
+  // Mercenario: skinning + descarte das faces de tras na parte de baixo do corpo.
+  // O sobretudo e uma casca dupla fechada (camada externa + forro); de fora so a externa pode aparecer.
   const VS_CM=`#version 300 es
 precision highp float;precision highp int;
 layout(location=0) in vec4 aPos;layout(location=1) in vec4 aNrm;layout(location=2) in vec2 aUV;layout(location=3) in uvec4 aJ;layout(location=4) in vec4 aW;
-uniform sampler2D uBones;uniform vec3 uCtr;uniform vec3 uExt;uniform mat4 uVP;uniform vec3 uCap[8];
-out vec2 vUV;out vec3 vN;out vec3 vP;
+uniform sampler2D uBones;uniform vec3 uCtr;uniform vec3 uExt;uniform mat4 uVP;
+out vec2 vUV;out vec3 vN;out vec3 vP;out float vLow;
 mat4 B(uint i){int r=int(i);return mat4(texelFetch(uBones,ivec2(0,r),0),texelFetch(uBones,ivec2(1,r),0),texelFetch(uBones,ivec2(2,r),0),texelFetch(uBones,ivec2(3,r),0));}
-vec3 push(vec3 p,vec3 a,vec3 b,float need){vec3 ab=b-a;float t=clamp(dot(p-a,ab)/max(dot(ab,ab),1e-6),0.,1.);vec3 d=p-(a+ab*t);float L=length(d);if(L<need&&L>1e-5)p+=d/L*(need-L);return p;}
 void main(){vec4 p=vec4(uCtr+aPos.xyz*uExt,1.);mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+B(aJ.z)*aW.z+B(aJ.w)*aW.w;
-  vec4 w=m*p;float r=aPos.w*.12;float c=smoothstep(.066,.082,r);
-  if(c>0.){vec3 q=w.xyz;float need=r+.003;for(int s=0;s<2;s++){for(int k=0;k<3;k++)q=push(q,uCap[s*4+k],uCap[s*4+k+1],need);}w.xyz=mix(w.xyz,q,c);}
-  vP=w.xyz;vN=mat3(m)*normalize(aNrm.xyz);vUV=aUV;gl_Position=uVP*w;}`;
-  const PC=prg(VS_CM,FS_L),PW=prg(VS_W,FS_L),PG=prg(VS_G,FS_G);
-  const capIdx=man.cap.flat(),capBuf=new Float32Array(24);
+  vec4 w=m*p;vLow=aPos.w>.001?1.:0.;vP=w.xyz;vN=mat3(m)*normalize(aNrm.xyz);vUV=aUV;gl_Position=uVP*w;}`;
+  const FS_LM=FS_L.replace('in vec2 vUV;','in float vLow;in vec2 vUV;').replace('void main(){','void main(){if(vLow>.5&&!gl_FrontFacing)discard;');
+  const PC=prg(VS_CM,FS_LM),PW=prg(VS_W,FS_L),PG=prg(VS_G,FS_G);
   async function tex(range){const b=new Blob([new Uint8Array(buf,range[0],range[1])],{type:'image/jpeg'});const bm=await createImageBitmap(b);
     const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.NONE);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bm);gl.generateMipmap(gl.TEXTURE_2D);
@@ -162,8 +160,7 @@ void main(){vec4 p=vec4(uCtr+aPos.xyz*uExt,1.);mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+
     const V=M4.look(eye,[cam.tx,cam.ty,0],[0,1,0]),VP=M4.mul(new Float32Array(16),P,V);
     gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),W[PEL*16+12],W[PEL*16+14]);gl.uniform1f(U(PG,'uGrid'),1);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
-    for(let i=0;i<8;i++){const k=capIdx[i];capBuf[i*3]=W[k*16+12];capBuf[i*3+1]=W[k*16+13];capBuf[i*3+2]=W[k*16+14]}
-    gl.useProgram(PC);gl.uniform3fv(U(PC,'uCap'),capBuf);gl.uniformMatrix4fv(U(PC,'uVP'),false,VP);gl.uniform3fv(U(PC,'uCtr'),man.char.ctr);gl.uniform3fv(U(PC,'uExt'),man.char.ext);gl.uniform3fv(U(PC,'uCam'),eye);gl.uniform1f(U(PC,'uMetal'),0);gl.uniform1f(U(PC,'uTm'),0);gl.uniform1f(U(PC,'uRune'),0);gl.uniform1f(U(PC,'uRim'),0);   // mesmo visual do Guerreiro
+    gl.useProgram(PC);gl.uniformMatrix4fv(U(PC,'uVP'),false,VP);gl.uniform3fv(U(PC,'uCtr'),man.char.ctr);gl.uniform3fv(U(PC,'uExt'),man.char.ext);gl.uniform3fv(U(PC,'uCam'),eye);gl.uniform1f(U(PC,'uMetal'),0);gl.uniform1f(U(PC,'uTm'),0);gl.uniform1f(U(PC,'uRune'),0);gl.uniform1f(U(PC,'uRim'),0);   // mesmo visual do Guerreiro
     gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,boneTex);gl.uniform1i(U(PC,'uBones'),1);
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tc);gl.uniform1i(U(PC,'uTex'),0);
     gl.bindVertexArray(mc.vao);gl.drawElements(gl.TRIANGLES,mc.n,gl.UNSIGNED_INT,0);
