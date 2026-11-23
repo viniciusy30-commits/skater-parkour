@@ -230,16 +230,34 @@ layout(location=0) in vec3 aP; layout(location=1) in vec4 aN; layout(location=2)
 uniform mat4 uVP; out vec2 vUV; out vec3 vN; out vec3 vP;
 void main(){ vP=aP; vN=aN.xyz; vUV=aUV; gl_Position=uVP*vec4(aP,1.); }"""
 
+    /** Pintura por projeção no mundo: o formato do mapa não muda, só a textura (pedra/terra/rocha do Z!MOBA). */
     const val MAP_FS = """#version 300 es
 precision highp float;
-in vec2 vUV; in vec3 vN; in vec3 vP; uniform sampler2D uTex; uniform vec3 uCam; uniform vec4 uSh[3]; uniform float uMask; out vec4 o;
+in vec2 vUV; in vec3 vN; in vec3 vP; uniform sampler2D uT0; uniform sampler2D uT1; uniform vec3 uCam; uniform vec4 uSh[3];
+uniform float uMask; uniform float uOrig; uniform vec2 uK; uniform vec3 uTint; uniform float uSoft; out vec4 o;
 """ + LIGHT + """
 void main(){
-  vec4 t=texture(uTex,vUV); if(uMask>.5 && t.a<.5) discard;
   vec3 N=normalize(vN); if(!gl_FrontFacing) N=-N; vec3 V=normalize(uCam-vP);
+  vec3 rgb;
+  if(uOrig>.5){ vec4 t=texture(uT0,vUV); if(uMask>.5 && t.a<.5) discard; rgb=t.rgb; }
+  else if(uSoft>0.){
+    vec3 w=pow(abs(N),vec3(uSoft)); w/=w.x+w.y+w.z;
+    vec3 c3=texture(uT0,vP.zy*uK.y).rgb*w.x+texture(uT0,vP.xz*uK.y).rgb*w.y+texture(uT0,vP.xy*uK.y).rgb*w.z;
+    float lum2=dot(texture(uT0,vP.xz*uK.y*.113+vec2(.2,.6)).rgb,vec3(.333));
+    rgb=c3*(.7+.8*lum2)*uTint;
+  } else {
+    vec2 pt=vP.xz*uK.x;
+    vec3 top=texture(uT0,pt).rgb;
+    float lum=dot(texture(uT0,pt*.137+vec2(.37,.11)).rgb,vec3(.333));
+    top*=.62+.95*lum;
+    float wx=pow(abs(N.x),6.), wz=pow(abs(N.z),6.);
+    vec3 sd=(texture(uT1,vP.zy*uK.y).rgb*wx+texture(uT1,vP.xy*uK.y).rgb*wz)/(wx+wz+1e-4);
+    float tw=smoothstep(.45,.8,N.y);
+    rgb=mix(sd,top,tw)*uTint;
+  }
   float sh=1.;
   if(N.y>.6 && abs(vP.y)<.7){ for(int i=0;i<3;i++){ vec4 s=uSh[i]; if(s.z<=0.) continue; float d=length(vP.xz-s.xy)/s.z; sh*=1.-s.w*smoothstep(1.,.15,d); } }
-  vec3 al=pow(t.rgb,vec3(2.2));
+  vec3 al=pow(rgb,vec3(2.2));
   vec3 c=light(al,N,V,0.,1.)*sh;
   c=mix(c,vec3(.56,.64,.74)*.9,smoothstep(-4.,-70.,vP.y)*.55);
   c=fogc(c,vP,uCam);
@@ -288,10 +306,10 @@ object MapNav {
 /** Cenário: o mapa Howling Abyss (modelo de Uriel Esquivel Cobos, CC-BY-4.0) com as texturas originais, e o céu. */
 class Arena {
     val torches = ArrayList<FloatArray>()
-    private class Grp(val vao: Int, val n: Int, val tex: Int, val mask: Boolean)
+    private class Grp(val vao: Int, val n: Int, val t0: Int, val t1: Int, val mask: Boolean, val orig: Boolean, val k: FloatArray, val tint: FloatArray, val soft: Float)
     private val groups = ArrayList<Grp>()
     private var progM = 0; private var progS = 0; private var sVao = 0
-    private var uVP = 0; private var uCam = 0; private var uSh = 0; private var uMask = 0; private var uTex = 0
+    private var uVP = 0; private var uCam = 0; private var uSh = 0; private var uMask = 0; private var uOrig = 0; private var uK = 0; private var uTint = 0; private var uSoft = 0
 
     private fun loadTex(ctx: Context, name: String, mask: Boolean): Int {
         val bytes = Gl.readAsset(ctx, name)
@@ -317,7 +335,8 @@ class Arena {
         progM = Gl.program(Shaders.MAP_VS, Shaders.MAP_FS)
         progS = Gl.program(Shaders.SKY_VS, Shaders.SKY_FS)
         uVP = glGetUniformLocation(progM, "uVP"); uCam = glGetUniformLocation(progM, "uCam"); uSh = glGetUniformLocation(progM, "uSh")
-        uMask = glGetUniformLocation(progM, "uMask"); uTex = glGetUniformLocation(progM, "uTex")
+        uMask = glGetUniformLocation(progM, "uMask"); uOrig = glGetUniformLocation(progM, "uOrig"); uK = glGetUniformLocation(progM, "uK")
+        uTint = glGetUniformLocation(progM, "uTint"); uSoft = glGetUniformLocation(progM, "uSoft")
         val q = floatArrayOf(-1f, -1f, 1f, -1f, 1f, 1f, -1f, -1f, 1f, 1f, -1f, 1f)
         val fb = Gl.floats(12); fb.put(q); fb.flip()
         sVao = Gl.gen(::glGenVertexArrays); glBindVertexArray(sVao)
@@ -326,6 +345,11 @@ class Arena {
         glBindVertexArray(0)
 
         MapNav.load(ctx)
+        // tabela de materiais: "mat modo topo lado escalaTopo escalaLado r g b suave"
+        val cfg = HashMap<Int, List<String>>()
+        String(Gl.readAsset(ctx, "map/mats.txt")).lines().forEach { ln -> val p = ln.trim().split(" "); if (p.size >= 10) cfg[p[0].toInt()] = p }
+        val texCache = HashMap<String, Int>()
+        fun tex(name: String, mask: Boolean) = texCache.getOrPut(name) { loadTex(ctx, "map/$name.webp", mask) }
         val bytes = Gl.readAsset(ctx, "map/map.bin")
         val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         b.int; val ng = b.int; val nt = b.int
@@ -341,7 +365,10 @@ class Arena {
             glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, false, 24, 16)
             val ibo = Gl.gen(::glGenBuffers); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo); glBufferData(GL_ELEMENT_ARRAY_BUFFER, ni * 4, ib, GL_STATIC_DRAW)
             glBindVertexArray(0)
-            groups.add(Grp(vao, ni, loadTex(ctx, "map/t$mat.webp", mask), mask))
+            val c = cfg[mat] ?: listOf("$mat", "0", "zSF", "zSF", "5", "5", "1", "1", "1", "0")
+            val orig = c[1] == "1"
+            groups.add(Grp(vao, ni, tex(c[2], mask), tex(c[3], false), mask, orig,
+                floatArrayOf(1f / c[4].toFloat(), 1f / c[5].toFloat()), floatArrayOf(c[6].toFloat(), c[7].toFloat(), c[8].toFloat()), c[9].toFloat()))
         }
     }
 
@@ -358,14 +385,16 @@ class Arena {
         glUniformMatrix4fv(uVP, 1, false, vp, 0)
         glUniform3fv(uCam, 1, eye, 0)
         glUniform4fv(uSh, 3, shadows, 0)
-        glUniform1i(uTex, 0)
-        glActiveTexture(GL_TEXTURE0)
+        glUniform1i(glGetUniformLocation(progM, "uT0"), 0); glUniform1i(glGetUniformLocation(progM, "uT1"), 1)
         for (pass in 0..1) for (g in groups) {
             if (g.mask != (pass == 1)) continue
-            glUniform1f(uMask, pass.toFloat())
-            glBindTexture(GL_TEXTURE_2D, g.tex)
+            glUniform1f(uMask, pass.toFloat()); glUniform1f(uOrig, if (g.orig) 1f else 0f)
+            glUniform2f(uK, g.k[0], g.k[1]); glUniform3f(uTint, g.tint[0], g.tint[1], g.tint[2]); glUniform1f(uSoft, g.soft)
+            glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, g.t0)
+            glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, g.t1)
             glBindVertexArray(g.vao); glDrawElements(GL_TRIANGLES, g.n, GL_UNSIGNED_INT, 0)
         }
+        glActiveTexture(GL_TEXTURE0)
     }
 
     companion object {
