@@ -366,8 +366,8 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     if(TG.fade>0){TG.vis=Math.min(1,TG.vis+dt*1.2);if(TG.vis>=1)TG.fade=0}}
   // camera: segue o ator
   const foc={x:0,y:.5,z:0};
-  function camStep(dt,dts){dts=dts==null?dt:dts;const ult=run&&run.id==='ult',mid=run&&TG.on&&!ult;const tx=ult?TG.x:(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*(run.el<1.4?.5:.7):(mid?(act.z+TG.z)*.5:act.z);
-    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1);if(ult){ty=.62+clp(act.y*.78,0,3.6)}
+  function camStep(dt,dts){dts=dts==null?dt:dts;const aut=cam.auto!==false,ult=aut&&run&&run.id==='ult',mid=aut&&run&&TG.on&&!ult;const tx=ult?TG.x:(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*(run.el<1.4?.5:.7):(mid?(act.z+TG.z)*.5:act.z);
+    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1)+clp(act.y*.5,0,3);if(ult){ty=.62+clp(act.y*.78,0,3.6)}
     const k=clp(dt*7,0,1);foc.x+=(tx-foc.x)*k;foc.z+=(tz-foc.z)*k;foc.y+=(ty-foc.y)*k;
     CAMF.zoom+=(CAMF.zt-CAMF.zoom)*clp(dt*6,0,1);CAMF.shake*=Math.pow(.003,dts);CAMF.flash*=Math.pow(.0008,dt);CAMF.roll*=Math.pow(.05,dts);
     dimEl.style.opacity=String(clp(CAMF.dim,0,1));const fl=$e('flash');if(fl){fl.style.opacity=String(clp(CAMF.flash,0,1));fl.style.background=CAMF.flashC}}
@@ -377,14 +377,16 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
   // ---------------------------------------------------------------------------------------------------
   function draw(){
     const dpr=Math.min(window.devicePixelRatio||1,2),w=Math.floor(cv.clientWidth*dpr),h=Math.floor(cv.clientHeight*dpr);if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
-    const dimK=clp(CAMF.dim,0,1);gl.viewport(0,0,cv.width,cv.height);gl.clearColor(.035-.025*dimK,.039-.03*dimK,.055-.03*dimK+.02*dimK,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
-    const P=M4.persp(.5,cv.width/cv.height,.2,60);P[9]=-SH.insetY();P[8]=SH.insetX();
-    const DD=SH.dist()*1.656*CAMF.zoom,cp=Math.cos(cam.pitch),sh=CAMF.shake;
-    const tx=cam.tx+foc.x+(sh?rnd(-sh,sh)*.05:0),ty=cam.ty+(foc.y-.52)+(sh?rnd(-sh,sh)*.05:0),tz=foc.z+(sh?rnd(-sh,sh)*.05:0);
-    const eye=[tx+Math.sin(cam.yaw+CAMF.yawk)*cp*DD,ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw+CAMF.yawk)*cp*DD];
-    const V=M4.look(eye,[tx,ty,tz],[Math.sin(CAMF.roll),Math.cos(CAMF.roll),0]),VP=M4.mul(new Float32Array(16),P,V);VPm=VP;camE=eye;camR=[V[0],V[4],V[8]];camU=[V[1],V[5],V[9]];
+    const dimK=clp(CAMF.dim,0,1);gl.viewport(0,0,cv.width,cv.height);{const B=SH.map().bg,k=1-.8*dimK;gl.clearColor(B[0]*k,B[1]*k,B[2]*k+.01*dimK,1)}gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
+    const P=M4.persp(SH.fov(),cv.width/cv.height,.1,80);P[9]=-SH.insetY();P[8]=SH.insetX();
+    const au=cam.auto!==false;if(cam.follow!==false){cam.fx=foc.x;cam.fy=foc.y;cam.fz=foc.z}
+    const DD=SH.dist()*1.656*(au?CAMF.zoom:1),sh=CAMF.shake,yk=au?CAMF.yawk:0;
+    const tx=cam.tx+(cam.fx||0)+(sh?rnd(-sh,sh)*.05:0),ty=cam.ty+((cam.fy==null?.52:cam.fy)-.52)+(sh?rnd(-sh,sh)*.05:0),tz=(cam.fz||0)+(cam.tz||0)+(sh?rnd(-sh,sh)*.05:0);
+    cam.pitch=Math.max(cam.pitch,SH.pmin(ty,DD));const cp=Math.cos(cam.pitch);
+    const eye=[tx+Math.sin(cam.yaw+yk)*cp*DD,ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw+yk)*cp*DD];
+    const V=M4.look(eye,[tx,ty,tz],[Math.sin(au?CAMF.roll:0),Math.cos(au?CAMF.roll:0),0]),VP=M4.mul(new Float32Array(16),P,V);VPm=VP;camE=eye;camR=[V[0],V[4],V[8]];camU=[V[1],V[5],V[9]];
     gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.x+W[PEL*16+12],act.z+W[PEL*16+14]);gl.uniform2f(U(PG,'uOff'),foc.x,foc.z);gl.uniform1f(U(PG,'uGrid'),1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
+    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.x+W[PEL*16+12],act.z+W[PEL*16+14]);gl.uniform2f(U(PG,'uOff'),cam.fx||0,cam.fz||0);SH.mapApply(U,PG,1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
     buildAct(actM,act.x,act.y,act.z,act.yaw);
     if(act.vis){
     for(let i=0;i<8;i++){const k=capIdx[i];capBuf[i*3]=W[k*16+12];capBuf[i*3+1]=W[k*16+13];capBuf[i*3+2]=W[k*16+14]}

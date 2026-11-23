@@ -280,6 +280,13 @@ body.game #hud{display:block}
 .dmg.crit{font-size:36px;color:#fff6c8;text-shadow:0 0 14px #ffb400,0 0 30px #ff5a00,0 2px 4px #000}
 .dmg.huge{font-size:60px;color:#fff;text-shadow:0 0 18px #ff4fd8,0 0 40px #5ad2ff,0 3px 6px #000;animation-duration:1.4s}
 @keyframes dmg{0%{opacity:0;transform:translate(-50%,-30%) scale(.5)}12%{opacity:1;transform:translate(-50%,-60%) scale(1.2)}100%{opacity:0;transform:translate(-50%,-210%) scale(.9)}}
+/* camera livre / cenario */
+.rng{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:8px 16px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid var(--line2);font:600 13px var(--fB);color:var(--mut)}
+.rng output{color:var(--gold2);font:700 13px var(--fB)}
+.rng input{grid-column:1/-1;width:100%;height:34px;accent-color:#d9b660}
+.hint{font:500 12px/1.4 var(--fB);color:var(--mut);padding:2px 6px}
+.maps .mp{min-height:48px;font-size:12px}
+.act.mp.on{background:linear-gradient(145deg,#f1d98f,#c9a24d);color:#1a1409;border-color:transparent}
 
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -479,12 +486,12 @@ const VS_G=`#version 300 es
 precision highp float;layout(location=0) in vec2 aP;uniform mat4 uVP;out vec2 vW;
 void main(){vW=aP*6.;gl_Position=uVP*vec4(vW.x,0.,vW.y,1.);}`;
 const FS_G=`#version 300 es
-precision highp float;in vec2 vW;uniform vec2 uSh;uniform float uGrid;out vec4 o;
+precision highp float;in vec2 vW;uniform vec2 uSh;uniform float uGrid,uFl;uniform vec3 uBase,uLn,uGl;out vec4 o;
 void main(){float r=length(vW);vec2 g=abs(fract(vW*2.-.5)-.5)/fwidth(vW*2.);float l=1.-min(min(g.x,g.y),1.);
- float fade=smoothstep(5.5,1.2,r);vec3 base=vec3(.07,.073,.092);vec3 c=base+vec3(.17,.15,.1)*l*uGrid*fade;
- c+=vec3(.075,.065,.045)*smoothstep(3.,0.,r);
+ float fade=smoothstep(5.5,1.2,r);vec3 base=uBase;vec3 c=base+uLn*l*uGrid*fade;
+ c+=uGl*smoothstep(3.,0.,r);
  float s=length((vW-uSh)*vec2(1.,1.15));float sh=smoothstep(.55,.08,s);c*=1.-.65*sh;
- o=vec4(c,fade*.96+.04);}`;
+ o=vec4(c,(fade*.96+.04)*uFl);}`;
 const VS_T=`#version 300 es
 precision highp float;layout(location=0) in vec3 aP;layout(location=1) in vec3 aA;uniform mat4 uVP;out vec3 vA;
 void main(){vA=aA;gl_Position=uVP*vec4(aP,1.);}`;
@@ -927,13 +934,13 @@ function vfxTick(dtR){vClock+=dtR;
  vLastCur=cur;vLastT=t;}
 function vfxDraw(VP){if(!vfxOn)return;gl.enable(gl.BLEND);gl.depthMask(false);gl.disable(gl.CULL_FACE);gl.blendFunc(gl.ONE,gl.ONE);skDraw(VP);gl.depthMask(true);gl.disable(gl.BLEND)}
 function drawFrame(){
- resize();gl.viewport(0,0,cv.width,cv.height);gl.clearColor(.035,.039,.055,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
- const asp=cv.width/cv.height;const P=M4.persp(window.GAME&&GAME.on?.62:.5,asp,.2,window.GAME&&GAME.on?60:40);P[9]=window.GAME&&GAME.on?0:-SH.insetY();P[8]=window.GAME&&GAME.on?0:SH.insetX();
- const DD=SH.dist()*1.656;const tz=cam.tz||0;const cp=Math.cos(cam.pitch),eye=[cam.tx+Math.sin(cam.yaw)*cp*DD,cam.ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw)*cp*DD];
+ resize();gl.viewport(0,0,cv.width,cv.height);gl.clearColor(...SH.map().bg,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
+ const asp=cv.width/cv.height;const P=M4.persp(window.GAME&&GAME.on?.62:SH.fov(),asp,.2,window.GAME&&GAME.on?60:40);P[9]=window.GAME&&GAME.on?0:-SH.insetY();P[8]=window.GAME&&GAME.on?0:SH.insetX();
+ const DD=SH.dist()*1.656;cam.pitch=Math.max(cam.pitch,SH.pmin(cam.ty,DD));const tz=cam.tz||0;const cp=Math.cos(cam.pitch),eye=[cam.tx+Math.sin(cam.yaw)*cp*DD,cam.ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw)*cp*DD];
  skShake(eye);const V=M4.look(eye,[cam.tx,cam.ty,tz],[0,1,0]);skCam(V,eye);const VP=M4.mul(new Float32Array(16),P,V);
  // ground
  gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
- if(window.GAME&&GAME.on){gl.disable(gl.BLEND);GAME.arenaDraw(VP,eye)}else{gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);const pk=man.pelvis;gl.uniform2f(U(PG,'uSh'),W[pk*16+12],W[pk*16+14]);gl.uniform1f(U(PG,'uGrid'),1);
+ if(window.GAME&&GAME.on){gl.disable(gl.BLEND);GAME.arenaDraw(VP,eye)}else{gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);const pk=man.pelvis;gl.uniform2f(U(PG,'uSh'),W[pk*16+12],W[pk*16+14]);SH.mapApply(U,PG,1);
  gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND)}
  // character
  gl.useProgram(PC);gl.uniformMatrix4fv(U(PC,'uVP'),false,VP);gl.uniform3fv(U(PC,'uCtr'),man.char.ctr);gl.uniform3fv(U(PC,'uExt'),man.char.ext);gl.uniform3fv(U(PC,'uCam'),eye);gl.uniform1f(U(PC,'uMetal'),0);
@@ -2493,7 +2500,22 @@ function disposeSession(S){
 }
 
 // ---------------------------------------------------------------- camera compartilhada
-const CAM={yaw:.45,pitch:.12,dist:2.6,ty:.52,tx:0};
+const CAM={yaw:.45,pitch:.12,dist:2.6,ty:.52,tx:0,tz:0,fov:.5,follow:true,auto:true,fx:0,fy:.52,fz:0};
+// cenarios selecionaveis (cor de fundo, chao, grade)
+const MAPS={
+  arena:{n:'Arena',bg:[.035,.039,.055],base:[.07,.073,.092],ln:[.17,.15,.1],gl:[.075,.065,.045],grid:1,fl:1},
+  liso:{n:'Escuro liso',bg:[.035,.039,.055],base:[.07,.073,.092],ln:[0,0,0],gl:[.075,.065,.045],grid:0,fl:1},
+  branco:{n:'Branco',bg:[.97,.97,.975],base:[.97,.97,.975],ln:[0,0,0],gl:[0,0,0],grid:0,fl:1},
+  grade:{n:'Branco c/ grade',bg:[.94,.945,.96],base:[.94,.945,.96],ln:[-.2,-.2,-.17],gl:[0,0,0],grid:1,fl:1},
+  cinza:{n:'Cinza',bg:[.5,.51,.53],base:[.5,.51,.53],ln:[0,0,0],gl:[0,0,0],grid:0,fl:1},
+  chroma:{n:'Verde chroma',bg:[0,.62,.2],base:[0,.62,.2],ln:[0,0,0],gl:[0,0,0],grid:0,fl:1},
+  vazio:{n:'Vazio (sem chão)',bg:[.02,.022,.032],base:[.02,.022,.032],ln:[0,0,0],gl:[0,0,0],grid:0,fl:0}};
+let MAPID='arena';try{const m=localStorage.getItem('v99map');if(MAPS[m])MAPID=m}catch(e){}
+const curMap=()=>MAPS[MAPID];
+function setMap(id){if(!MAPS[id])return;MAPID=id;try{localStorage.setItem('v99map',id)}catch(e){}}
+function mapApply(U,PG,gs){const m=curMap();gl.uniform3fv(U(PG,'uBase'),m.base);gl.uniform3fv(U(PG,'uLn'),m.ln);gl.uniform3fv(U(PG,'uGl'),m.gl);gl.uniform1f(U(PG,'uGrid'),m.grid*gs);gl.uniform1f(U(PG,'uFl'),m.fl)}
+// a camera nunca fica abaixo do chao: menor "pitch" que mantem o olho acima de 0,12
+const pmin=(ty,DD)=>Math.asin(Math.max(-1,Math.min(1,(.12-ty)/Math.max(.05,DD))));
 const INS={x:0,y:0,asp:.5,fit:2.5};
 const LANDQ=matchMedia('(orientation:landscape) and (max-height:620px),(orientation:landscape) and (min-aspect-ratio:17/10)');
 function computeInsets(){
@@ -2511,14 +2533,20 @@ function computeInsets(){
 }
 const fitD=()=>1;                                  // zoom do usuario (1 = encaixe automatico)
 const camDist=()=>document.body.classList.contains('game')?CAM.dist:CAM.dist*INS.fit;
-function camReset(){computeInsets();Object.assign(CAM,{yaw:.45,pitch:.12,dist:1,ty:.52,tx:0})}
-const clampZ=v=>document.body.classList.contains('game')?Math.max(.9,Math.min(7,v)):Math.max(.3,Math.min(3.2,v));
+function camReset(){computeInsets();Object.assign(CAM,{yaw:.45,pitch:.12,dist:1,ty:.52,tx:0,tz:0,fov:.5})}
+const clampZ=v=>document.body.classList.contains('game')?Math.max(.9,Math.min(7,v)):Math.max(.1,Math.min(6,v));
 {const pts=new Map();let lastD=0;
  _ael.call(cv,'pointerdown',e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);lastD=0});
  const up=e=>{pts.delete(e.pointerId);lastD=0};_ael.call(cv,'pointerup',up);_ael.call(cv,'pointercancel',up);
  _ael.call(cv,'pointermove',e=>{if(!pts.has(e.pointerId))return;const o=pts.get(e.pointerId);const dx=e.clientX-o[0],dy=e.clientY-o[1];pts.set(e.pointerId,[e.clientX,e.clientY]);
-  if(pts.size===1){CAM.yaw-=dx*.008;CAM.pitch=Math.max(-.6,Math.min(1.35,CAM.pitch+dy*.006))}
-  else if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);if(lastD)CAM.dist=clampZ(CAM.dist*lastD/d);lastD=d;CAM.ty=Math.max(0,Math.min(1.2,CAM.ty+dy*.0015))}});
+  if(pts.size===1){CAM.yaw-=dx*.008;CAM.pitch=Math.max(-.6,Math.min(1.5,CAM.pitch+dy*.006))}
+  else if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);
+   if(lastD&&!document.body.classList.contains('game')){CAM.dist=clampZ(CAM.dist*lastD/d);
+    // dois dedos: mover o ponto de visao (a metade do deslocamento do dedo que mexeu = centro)
+    const k=2*Math.tan(CAM.fov/2)*camDist()*1.656/Math.max(200,cv.clientHeight)*.5,c=Math.cos(CAM.yaw),sn=Math.sin(CAM.yaw);
+    CAM.tx=Math.max(-40,Math.min(40,CAM.tx-dx*k*c));CAM.tz=Math.max(-40,Math.min(40,CAM.tz+dx*k*sn));CAM.ty=Math.max(0,Math.min(8,CAM.ty+dy*k))}
+   else if(lastD)CAM.dist=clampZ(CAM.dist*lastD/d);
+   lastD=d}});
  _ael.call(cv,'wheel',e=>{e.preventDefault();CAM.dist=clampZ(CAM.dist*Math.exp(e.deltaY*.001))},{passive:false})}
 
 // ---------------------------------------------------------------- blocos comprimidos
@@ -2986,8 +3014,8 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     if(TG.fade>0){TG.vis=Math.min(1,TG.vis+dt*1.2);if(TG.vis>=1)TG.fade=0}}
   // camera: segue o ator
   const foc={x:0,y:.5,z:0};
-  function camStep(dt,dts){dts=dts==null?dt:dts;const ult=run&&run.id==='ult',mid=run&&TG.on&&!ult;const tx=ult?TG.x:(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*(run.el<1.4?.5:.7):(mid?(act.z+TG.z)*.5:act.z);
-    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1);if(ult){ty=.62+clp(act.y*.78,0,3.6)}
+  function camStep(dt,dts){dts=dts==null?dt:dts;const aut=cam.auto!==false,ult=aut&&run&&run.id==='ult',mid=aut&&run&&TG.on&&!ult;const tx=ult?TG.x:(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*(run.el<1.4?.5:.7):(mid?(act.z+TG.z)*.5:act.z);
+    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1)+clp(act.y*.5,0,3);if(ult){ty=.62+clp(act.y*.78,0,3.6)}
     const k=clp(dt*7,0,1);foc.x+=(tx-foc.x)*k;foc.z+=(tz-foc.z)*k;foc.y+=(ty-foc.y)*k;
     CAMF.zoom+=(CAMF.zt-CAMF.zoom)*clp(dt*6,0,1);CAMF.shake*=Math.pow(.003,dts);CAMF.flash*=Math.pow(.0008,dt);CAMF.roll*=Math.pow(.05,dts);
     dimEl.style.opacity=String(clp(CAMF.dim,0,1));const fl=$e('flash');if(fl){fl.style.opacity=String(clp(CAMF.flash,0,1));fl.style.background=CAMF.flashC}}
@@ -2997,14 +3025,16 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
   // ---------------------------------------------------------------------------------------------------
   function draw(){
     const dpr=Math.min(window.devicePixelRatio||1,2),w=Math.floor(cv.clientWidth*dpr),h=Math.floor(cv.clientHeight*dpr);if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
-    const dimK=clp(CAMF.dim,0,1);gl.viewport(0,0,cv.width,cv.height);gl.clearColor(.035-.025*dimK,.039-.03*dimK,.055-.03*dimK+.02*dimK,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
-    const P=M4.persp(.5,cv.width/cv.height,.2,60);P[9]=-SH.insetY();P[8]=SH.insetX();
-    const DD=SH.dist()*1.656*CAMF.zoom,cp=Math.cos(cam.pitch),sh=CAMF.shake;
-    const tx=cam.tx+foc.x+(sh?rnd(-sh,sh)*.05:0),ty=cam.ty+(foc.y-.52)+(sh?rnd(-sh,sh)*.05:0),tz=foc.z+(sh?rnd(-sh,sh)*.05:0);
-    const eye=[tx+Math.sin(cam.yaw+CAMF.yawk)*cp*DD,ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw+CAMF.yawk)*cp*DD];
-    const V=M4.look(eye,[tx,ty,tz],[Math.sin(CAMF.roll),Math.cos(CAMF.roll),0]),VP=M4.mul(new Float32Array(16),P,V);VPm=VP;camE=eye;camR=[V[0],V[4],V[8]];camU=[V[1],V[5],V[9]];
+    const dimK=clp(CAMF.dim,0,1);gl.viewport(0,0,cv.width,cv.height);{const B=SH.map().bg,k=1-.8*dimK;gl.clearColor(B[0]*k,B[1]*k,B[2]*k+.01*dimK,1)}gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
+    const P=M4.persp(SH.fov(),cv.width/cv.height,.1,80);P[9]=-SH.insetY();P[8]=SH.insetX();
+    const au=cam.auto!==false;if(cam.follow!==false){cam.fx=foc.x;cam.fy=foc.y;cam.fz=foc.z}
+    const DD=SH.dist()*1.656*(au?CAMF.zoom:1),sh=CAMF.shake,yk=au?CAMF.yawk:0;
+    const tx=cam.tx+(cam.fx||0)+(sh?rnd(-sh,sh)*.05:0),ty=cam.ty+((cam.fy==null?.52:cam.fy)-.52)+(sh?rnd(-sh,sh)*.05:0),tz=(cam.fz||0)+(cam.tz||0)+(sh?rnd(-sh,sh)*.05:0);
+    cam.pitch=Math.max(cam.pitch,SH.pmin(ty,DD));const cp=Math.cos(cam.pitch);
+    const eye=[tx+Math.sin(cam.yaw+yk)*cp*DD,ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw+yk)*cp*DD];
+    const V=M4.look(eye,[tx,ty,tz],[Math.sin(au?CAMF.roll:0),Math.cos(au?CAMF.roll:0),0]),VP=M4.mul(new Float32Array(16),P,V);VPm=VP;camE=eye;camR=[V[0],V[4],V[8]];camU=[V[1],V[5],V[9]];
     gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.x+W[PEL*16+12],act.z+W[PEL*16+14]);gl.uniform2f(U(PG,'uOff'),foc.x,foc.z);gl.uniform1f(U(PG,'uGrid'),1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
+    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.x+W[PEL*16+12],act.z+W[PEL*16+14]);gl.uniform2f(U(PG,'uOff'),cam.fx||0,cam.fz||0);SH.mapApply(U,PG,1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
     buildAct(actM,act.x,act.y,act.z,act.yaw);
     if(act.vis){
     for(let i=0;i<8;i++){const k=capIdx[i];capBuf[i*3]=W[k*16+12];capBuf[i*3+1]=W[k*16+13];capBuf[i*3+2]=W[k*16+14]}
@@ -3187,7 +3217,7 @@ async function loadChar(id){
     const buf=await unpackBlock($(C.block).textContent,prog);
     prog('Montando…',.5);
     const ex=man.extra||{};
-    const SH={gl,cv,man,buf,cam:CAM,prog,fitD,dist:camDist,insetX:()=>INS.x,insetY:()=>INS.y,alive:()=>!S.dead,
+    const SH={gl,cv,man,buf,cam:CAM,prog,fitD,dist:camDist,fov:()=>CAM.fov,map:curMap,mapApply,pmin,insetX:()=>INS.x,insetY:()=>INS.y,alive:()=>!S.dead,
       keys:p=>Object.keys(ex).filter(k=>k.startsWith(p)),
       extra:k=>buf.slice(ex[k][0],ex[k][0]+ex[k][1]),
       bin:k=>new Uint8Array(buf,ex[k][0],ex[k][1]),
@@ -3262,14 +3292,29 @@ const UI={
     sec('Velocidade');
     const sg=document.createElement('div');sg.className='seg';SPEEDS.forEach(v=>{const b=document.createElement('button');b.textContent=fmtX(v);b.dataset.v=v;b.onclick=()=>eng.setSpeed(v);sg.appendChild(b)});cfg.appendChild(sg);this.segEl=sg;
     sec('Câmera');
-    {const b=document.createElement('button');b.className='act';b.innerHTML='<svg class="i"><use href="#i-cam"/></svg>Resetar câmera';b.onclick=()=>camReset();cfg.appendChild(b)}
+    this.camEls=[];
+    const sw=(label,sub,get,set)=>{const b=document.createElement('button');b.className='sw';b.innerHTML=`<svg class="i"><use href="#i-cam"/></svg><span>${label}<small>${sub}</small></span><i class="tg2"></i>`;
+      b.onclick=()=>{set(!get());this.syncCam()};cfg.appendChild(b);this.camEls.push(()=>{const v=!!get();if(b._v!==v){b._v=v;b.classList.toggle('on',v)}})};
+    sw('Seguir personagem','Desligado: a câmera fica fixa no lugar em que está',()=>CAM.follow,v=>{CAM.follow=v});
+    sw('Câmera automática','Zoom e giro cinematográficos nas ultimates',()=>CAM.auto,v=>{CAM.auto=v});
+    const rng=(label,min,max,step,get,set,fmt)=>{const w=document.createElement('label');w.className='rng';const o=document.createElement('output');const i=document.createElement('input');i.type='range';i.min=min;i.max=max;i.step=step;
+      i.oninput=()=>{set(+i.value);o.textContent=fmt(+i.value)};w.innerHTML=`<span>${label}</span>`;w.appendChild(i);w.appendChild(o);cfg.appendChild(w);this.camEls.push(()=>{if(document.activeElement===i)return;const v=get();if(+i.value!==v){i.value=v;o.textContent=fmt(v)}})};
+    rng('Distância / zoom',Math.log(.1),Math.log(6),.01,()=>Math.log(CAM.dist),v=>{CAM.dist=Math.exp(v)},v=>Math.exp(v).toFixed(2)+'×');
+    rng('Campo de visão',.2,1.3,.01,()=>CAM.fov,v=>{CAM.fov=v},v=>Math.round(v*2*57.3)+'°');
+    rng('Altura do alvo',0,4,.01,()=>CAM.ty,v=>{CAM.ty=v},v=>v.toFixed(2)+' m');
+    {const g=document.createElement('div');g.className='seg';[['Frente',0,.12],['Lado',1.571,.12],['Costas',3.14,.12],['Topo',.45,1.5]].forEach(([n,y,pi])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{CAM.yaw=y;CAM.pitch=pi};g.appendChild(b)});cfg.appendChild(g)}
+    {const h=document.createElement('div');h.className='hint';h.textContent='1 dedo gira · 2 dedos movem a câmera e dão zoom · a câmera nunca desce abaixo do chão';cfg.appendChild(h)}
+    {const b=document.createElement('button');b.className='act';b.innerHTML='<svg class="i"><use href="#i-cam"/></svg>Resetar câmera';b.onclick=()=>{camReset();this.syncCam()};cfg.appendChild(b)}
+    sec('Cenário');
+    {const g=document.createElement('div');g.className='grid2 maps';this.mapEls={};Object.keys(MAPS).forEach(id=>{const b=document.createElement('button');b.className='act mp';b.textContent=MAPS[id].n;b.onclick=()=>{setMap(id);this.syncCam()};g.appendChild(b);this.mapEls[id]=b});cfg.appendChild(g)}
+    this.syncCam();
     if(eng.actions&&eng.actions.length){sec('Ações');const g=document.createElement('div');g.className='grid2';eng.actions.forEach(a=>{const b=document.createElement('button');b.className='act'+(a.tone==='red'?' red':'');
         const lab=()=>a.dyn?a.dyn():a.label;b.innerHTML=`<svg class="i"><use href="#${a.icon}"/></svg><span>${lab()}</span>`;b.onclick=()=>{a.run();_st(()=>{b.lastChild.textContent=lab()},60)};if(a.wide)b.style.gridColumn='1/-1';g.appendChild(b)});cfg.appendChild(g)}
     {const v=document.createElement('div');v.className='ver';v.textContent=`${C.nome.toUpperCase()} · VISUALIZADOR V99`;cfg.appendChild(v)}
     this.showTab('anim');this.filter();this.cur=-1;this.sync(true);
     useHref($('fold'),'i-chev');
   },
-  unbind(){this.eng=null;this.rows=[];this.tglEls=[];this.kitEls={};$('animlist').textContent='';$('chipbar').textContent='';$('kitgrid').textContent='';$('cfg').textContent='';$('nowName').textContent='—';$('nowMeta').textContent=''},
+  unbind(){this.eng=null;this.camEls=null;this.mapEls=null;this.rows=[];this.tglEls=[];this.kitEls={};$('animlist').textContent='';$('chipbar').textContent='';$('kitgrid').textContent='';$('cfg').textContent='';$('nowName').textContent='—';$('nowMeta').textContent=''},
   filter(){let n=0;for(const r of this.rows){const c=this.eng.clips[+r.dataset.i];const ok=(this.cat==='Tudo'||c.cat===this.cat)&&(!this.q||r.dataset.k.includes(this.q));r.hidden=!ok;if(ok)n++;
       r.querySelector('.ct').style.display=this.cat==='Tudo'?'block':'none'}
     if(this.empty)this.empty.hidden=n>0},
@@ -3277,6 +3322,7 @@ const UI={
   step(d){const e=this.eng;if(!e)return;const v=this.visible();if(!v.length)return;let k=v.findIndex(r=>+r.dataset.i===e.state().cur);k=k<0?0:(k+d+v.length)%v.length;e.setClip(+v[k].dataset.i);this.revealCur()},
   revealCur(){const r=this.rows[this.cur];if(r&&!r.hidden&&this.tab==='anim')_st(()=>r.scrollIntoView({block:'nearest',behavior:'smooth'}),60)},
   showInfo(s){$('skinfo').innerHTML=`<b>${s.nome}</b><div class="tags"><span class="tg">${s.tag}</span>${s.cd?`<span class="tg">Recarga ${s.cd}s</span>`:'<span class="tg">Sem recarga</span>'}${s.custo?`<span class="tg">Custo ${s.custo}</span>`:''}</div>${s.desc}`},
+  syncCam(){if(this.camEls)for(const f of this.camEls)f();if(this.mapEls)for(const k in this.mapEls)this.mapEls[k].classList.toggle('on',k===MAPID)},
   syncToggles(){for(const[t,b]of this.tglEls){const v=!!t.get();if(b._v!==v){b._v=v;b.classList.toggle('on',v)}}},
   sync(force){const e=this.eng;if(!e)return;const s=e.state(),C=this.cache;
     if(e.kit&&(s.skill||null)!==C.lblSkill){C.lblSkill=s.skill||null;const k=s.skill&&e.kit.find(x=>x.id===s.skill);if(k){$('nowName').textContent=k.nome;$('nowMeta').textContent=k.tag+' · '+(k.cd?'recarga '+k.cd+'s':'sem recarga')}else this.cur=-1}
@@ -3288,11 +3334,14 @@ const UI={
     if(!this.drag&&pv!==C.pv){C.pv=pv;const sb=$('seekbar');sb.value=pv;sb.style.setProperty('--p',pv/10+'%')}
     const tn=s.t.toFixed(2)+'s';if(tn!==C.tn){C.tn=tn;$('tNow').textContent=tn}
     if(s.skill!==C.skill||force){C.skill=s.skill;for(const id in this.kitEls)this.kitEls[id].classList.toggle('on',id===s.skill)}
-    if(!(this._f=(this._f||0)+1)%6||force)this.syncToggles();
+    if(!(this._f=(this._f||0)+1)%6||force){this.syncToggles();this.syncCam()}
   }
 };
 UI.init();
 
+// perda de contexto WebGL (celular sem memoria de video): recarrega o personagem atual automaticamente
+cv.addEventListener('webglcontextlost',e=>{e.preventDefault();BUSY=true});
+cv.addEventListener('webglcontextrestored',()=>{const id=CURID||'guerreiro';BUSY=false;CURID=null;loadChar(id)});
 function loop(now){_raf(loop);computeInsets();if(ENG&&!BUSY){try{ENG.frame(now)}catch(err){if(!loop.err){loop.err=1;console.error(err)}}UI.sync()}}
 window.__V99={GLC:()=>Object.assign({},GLC),live:()=>LIVE.size,sess:()=>SESS.cur&&{timers:SESS.cur.timers.size,listeners:SESS.cur.listeners.length,gl:SESS.cur.gl.length,ctxs:SESS.cur.ctxs.length,urls:SESS.cur.urls.length},
   cam:CAM,load:loadChar,cur:()=>CURID,busy:()=>BUSY,eng:()=>ENG,probe:()=>{window.__wr=ENG&&new WeakRef(ENG)}};

@@ -62,6 +62,11 @@ prelude = patch(prelude, 'vec3 base=vec3(.105,.115,.14);vec3 c=base+vec3(.12,.13
 prelude = patch(prelude, 'uniform float uRune,uTm,uRim;uniform vec3 uRC;', 'uniform float uRune,uTm,uRim,uGain;uniform vec3 uRC;')
 prelude = patch(prelude, ' o=vec4(pow(c,vec3(1./2.2)),1.);}`;\nconst VS_G', ' if(uGain>0.)c*=uGain;\n o=vec4(pow(c,vec3(1./2.2)),1.);}`;\nconst VS_G')
 prelude = patch(prelude, 'c+=vec3(.05,.055,.07)*smoothstep(3.,0.,r);', 'c+=vec3(.075,.065,.045)*smoothstep(3.,0.,r);')
+# cenario selecionavel: cores/grade/chao por uniformes
+prelude = patch(prelude, 'vec3 base=vec3(.07,.073,.092);vec3 c=base+vec3(.17,.15,.1)*l*uGrid*fade;', 'vec3 base=uBase;vec3 c=base+uLn*l*uGrid*fade;')
+prelude = patch(prelude, 'c+=vec3(.075,.065,.045)*smoothstep(3.,0.,r);', 'c+=uGl*smoothstep(3.,0.,r);')
+prelude = patch(prelude, 'uniform vec2 uSh;uniform float uGrid;out vec4 o;', 'uniform vec2 uSh;uniform float uGrid,uFl;uniform vec3 uBase,uLn,uGl;out vec4 o;')
+prelude = patch(prelude, 'o=vec4(c,fade*.96+.04);}`', 'o=vec4(c,(fade*.96+.04)*uFl);}`')
 
 # ------------------------------------------------------------------ motor do Guerreiro (linhas 236..2122)
 app = L[235:2122]                     # indices 235..2121  => linhas 236..2122
@@ -87,9 +92,10 @@ assert lget(572).startswith('const pts=new Map()') and lget(578).startswith("cv.
 rep_lines(572, 578, '')
 l = lget(2083); l = patch(l, "cam={...CAM0}", "Object.assign(cam,CAM0)"); app[2083 - 236] = l
 # projecao: recuo da interface (gaveta/barras) vem do shell
-l = lget(625); l = patch(l, "P[9]=-Math.min(.9,$('panel').getBoundingClientRect().height/innerHeight);", "P[9]=window.GAME&&GAME.on?0:-SH.insetY();P[8]=window.GAME&&GAME.on?0:SH.insetX();"); app[625 - 236] = l
-l = lget(624); l = patch(l, 'gl.clearColor(.078,.086,.105,1)', 'gl.clearColor(.035,.039,.055,1)'); app[624 - 236] = l
-l = lget(626); l = patch(l, 'const DD=cam.dist*1.656;', 'const DD=SH.dist()*1.656;'); app[626 - 236] = l
+l = lget(625); l = patch(l, 'GAME.on?.62:.5,asp', 'GAME.on?.62:SH.fov(),asp'); l = patch(l, "P[9]=-Math.min(.9,$('panel').getBoundingClientRect().height/innerHeight);", "P[9]=window.GAME&&GAME.on?0:-SH.insetY();P[8]=window.GAME&&GAME.on?0:SH.insetX();"); app[625 - 236] = l
+l = lget(624); l = patch(l, 'gl.clearColor(.078,.086,.105,1)', 'gl.clearColor(...SH.map().bg,1)'); app[624 - 236] = l
+l = lget(630); l = patch(l, "gl.uniform1f(U(PG,'uGrid'),1);", 'SH.mapApply(U,PG,1);'); app[630 - 236] = l
+l = lget(626); l = patch(l, 'const DD=cam.dist*1.656;', 'const DD=SH.dist()*1.656;cam.pitch=Math.max(cam.pitch,SH.pmin(cam.ty,DD));'); app[626 - 236] = l
 # o laco de quadros e do shell
 assert lget(654) == ' requestAnimationFrame(frame)}'
 app[654 - 236] = ' }'

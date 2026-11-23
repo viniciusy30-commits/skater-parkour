@@ -41,7 +41,22 @@ function disposeSession(S){
 }
 
 // ---------------------------------------------------------------- camera compartilhada
-const CAM={yaw:.45,pitch:.12,dist:2.6,ty:.52,tx:0};
+const CAM={yaw:.45,pitch:.12,dist:2.6,ty:.52,tx:0,tz:0,fov:.5,follow:true,auto:true,fx:0,fy:.52,fz:0};
+// cenarios selecionaveis (cor de fundo, chao, grade)
+const MAPS={
+  arena:{n:'Arena',bg:[.035,.039,.055],base:[.07,.073,.092],ln:[.17,.15,.1],gl:[.075,.065,.045],grid:1,fl:1},
+  liso:{n:'Escuro liso',bg:[.035,.039,.055],base:[.07,.073,.092],ln:[0,0,0],gl:[.075,.065,.045],grid:0,fl:1},
+  branco:{n:'Branco',bg:[.97,.97,.975],base:[.97,.97,.975],ln:[0,0,0],gl:[0,0,0],grid:0,fl:1},
+  grade:{n:'Branco c/ grade',bg:[.94,.945,.96],base:[.94,.945,.96],ln:[-.2,-.2,-.17],gl:[0,0,0],grid:1,fl:1},
+  cinza:{n:'Cinza',bg:[.5,.51,.53],base:[.5,.51,.53],ln:[0,0,0],gl:[0,0,0],grid:0,fl:1},
+  chroma:{n:'Verde chroma',bg:[0,.62,.2],base:[0,.62,.2],ln:[0,0,0],gl:[0,0,0],grid:0,fl:1},
+  vazio:{n:'Vazio (sem chão)',bg:[.02,.022,.032],base:[.02,.022,.032],ln:[0,0,0],gl:[0,0,0],grid:0,fl:0}};
+let MAPID='arena';try{const m=localStorage.getItem('v99map');if(MAPS[m])MAPID=m}catch(e){}
+const curMap=()=>MAPS[MAPID];
+function setMap(id){if(!MAPS[id])return;MAPID=id;try{localStorage.setItem('v99map',id)}catch(e){}}
+function mapApply(U,PG,gs){const m=curMap();gl.uniform3fv(U(PG,'uBase'),m.base);gl.uniform3fv(U(PG,'uLn'),m.ln);gl.uniform3fv(U(PG,'uGl'),m.gl);gl.uniform1f(U(PG,'uGrid'),m.grid*gs);gl.uniform1f(U(PG,'uFl'),m.fl)}
+// a camera nunca fica abaixo do chao: menor "pitch" que mantem o olho acima de 0,12
+const pmin=(ty,DD)=>Math.asin(Math.max(-1,Math.min(1,(.12-ty)/Math.max(.05,DD))));
 const INS={x:0,y:0,asp:.5,fit:2.5};
 const LANDQ=matchMedia('(orientation:landscape) and (max-height:620px),(orientation:landscape) and (min-aspect-ratio:17/10)');
 function computeInsets(){
@@ -59,14 +74,20 @@ function computeInsets(){
 }
 const fitD=()=>1;                                  // zoom do usuario (1 = encaixe automatico)
 const camDist=()=>document.body.classList.contains('game')?CAM.dist:CAM.dist*INS.fit;
-function camReset(){computeInsets();Object.assign(CAM,{yaw:.45,pitch:.12,dist:1,ty:.52,tx:0})}
-const clampZ=v=>document.body.classList.contains('game')?Math.max(.9,Math.min(7,v)):Math.max(.3,Math.min(3.2,v));
+function camReset(){computeInsets();Object.assign(CAM,{yaw:.45,pitch:.12,dist:1,ty:.52,tx:0,tz:0,fov:.5})}
+const clampZ=v=>document.body.classList.contains('game')?Math.max(.9,Math.min(7,v)):Math.max(.1,Math.min(6,v));
 {const pts=new Map();let lastD=0;
  _ael.call(cv,'pointerdown',e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);lastD=0});
  const up=e=>{pts.delete(e.pointerId);lastD=0};_ael.call(cv,'pointerup',up);_ael.call(cv,'pointercancel',up);
  _ael.call(cv,'pointermove',e=>{if(!pts.has(e.pointerId))return;const o=pts.get(e.pointerId);const dx=e.clientX-o[0],dy=e.clientY-o[1];pts.set(e.pointerId,[e.clientX,e.clientY]);
-  if(pts.size===1){CAM.yaw-=dx*.008;CAM.pitch=Math.max(-.6,Math.min(1.35,CAM.pitch+dy*.006))}
-  else if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);if(lastD)CAM.dist=clampZ(CAM.dist*lastD/d);lastD=d;CAM.ty=Math.max(0,Math.min(1.2,CAM.ty+dy*.0015))}});
+  if(pts.size===1){CAM.yaw-=dx*.008;CAM.pitch=Math.max(-.6,Math.min(1.5,CAM.pitch+dy*.006))}
+  else if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);
+   if(lastD&&!document.body.classList.contains('game')){CAM.dist=clampZ(CAM.dist*lastD/d);
+    // dois dedos: mover o ponto de visao (a metade do deslocamento do dedo que mexeu = centro)
+    const k=2*Math.tan(CAM.fov/2)*camDist()*1.656/Math.max(200,cv.clientHeight)*.5,c=Math.cos(CAM.yaw),sn=Math.sin(CAM.yaw);
+    CAM.tx=Math.max(-40,Math.min(40,CAM.tx-dx*k*c));CAM.tz=Math.max(-40,Math.min(40,CAM.tz+dx*k*sn));CAM.ty=Math.max(0,Math.min(8,CAM.ty+dy*k))}
+   else if(lastD)CAM.dist=clampZ(CAM.dist*lastD/d);
+   lastD=d}});
  _ael.call(cv,'wheel',e=>{e.preventDefault();CAM.dist=clampZ(CAM.dist*Math.exp(e.deltaY*.001))},{passive:false})}
 
 // ---------------------------------------------------------------- blocos comprimidos
@@ -203,7 +224,7 @@ async function loadChar(id){
     const buf=await unpackBlock($(C.block).textContent,prog);
     prog('Montando…',.5);
     const ex=man.extra||{};
-    const SH={gl,cv,man,buf,cam:CAM,prog,fitD,dist:camDist,insetX:()=>INS.x,insetY:()=>INS.y,alive:()=>!S.dead,
+    const SH={gl,cv,man,buf,cam:CAM,prog,fitD,dist:camDist,fov:()=>CAM.fov,map:curMap,mapApply,pmin,insetX:()=>INS.x,insetY:()=>INS.y,alive:()=>!S.dead,
       keys:p=>Object.keys(ex).filter(k=>k.startsWith(p)),
       extra:k=>buf.slice(ex[k][0],ex[k][0]+ex[k][1]),
       bin:k=>new Uint8Array(buf,ex[k][0],ex[k][1]),
@@ -278,14 +299,29 @@ const UI={
     sec('Velocidade');
     const sg=document.createElement('div');sg.className='seg';SPEEDS.forEach(v=>{const b=document.createElement('button');b.textContent=fmtX(v);b.dataset.v=v;b.onclick=()=>eng.setSpeed(v);sg.appendChild(b)});cfg.appendChild(sg);this.segEl=sg;
     sec('Câmera');
-    {const b=document.createElement('button');b.className='act';b.innerHTML='<svg class="i"><use href="#i-cam"/></svg>Resetar câmera';b.onclick=()=>camReset();cfg.appendChild(b)}
+    this.camEls=[];
+    const sw=(label,sub,get,set)=>{const b=document.createElement('button');b.className='sw';b.innerHTML=`<svg class="i"><use href="#i-cam"/></svg><span>${label}<small>${sub}</small></span><i class="tg2"></i>`;
+      b.onclick=()=>{set(!get());this.syncCam()};cfg.appendChild(b);this.camEls.push(()=>{const v=!!get();if(b._v!==v){b._v=v;b.classList.toggle('on',v)}})};
+    sw('Seguir personagem','Desligado: a câmera fica fixa no lugar em que está',()=>CAM.follow,v=>{CAM.follow=v});
+    sw('Câmera automática','Zoom e giro cinematográficos nas ultimates',()=>CAM.auto,v=>{CAM.auto=v});
+    const rng=(label,min,max,step,get,set,fmt)=>{const w=document.createElement('label');w.className='rng';const o=document.createElement('output');const i=document.createElement('input');i.type='range';i.min=min;i.max=max;i.step=step;
+      i.oninput=()=>{set(+i.value);o.textContent=fmt(+i.value)};w.innerHTML=`<span>${label}</span>`;w.appendChild(i);w.appendChild(o);cfg.appendChild(w);this.camEls.push(()=>{if(document.activeElement===i)return;const v=get();if(+i.value!==v){i.value=v;o.textContent=fmt(v)}})};
+    rng('Distância / zoom',Math.log(.1),Math.log(6),.01,()=>Math.log(CAM.dist),v=>{CAM.dist=Math.exp(v)},v=>Math.exp(v).toFixed(2)+'×');
+    rng('Campo de visão',.2,1.3,.01,()=>CAM.fov,v=>{CAM.fov=v},v=>Math.round(v*2*57.3)+'°');
+    rng('Altura do alvo',0,4,.01,()=>CAM.ty,v=>{CAM.ty=v},v=>v.toFixed(2)+' m');
+    {const g=document.createElement('div');g.className='seg';[['Frente',0,.12],['Lado',1.571,.12],['Costas',3.14,.12],['Topo',.45,1.5]].forEach(([n,y,pi])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{CAM.yaw=y;CAM.pitch=pi};g.appendChild(b)});cfg.appendChild(g)}
+    {const h=document.createElement('div');h.className='hint';h.textContent='1 dedo gira · 2 dedos movem a câmera e dão zoom · a câmera nunca desce abaixo do chão';cfg.appendChild(h)}
+    {const b=document.createElement('button');b.className='act';b.innerHTML='<svg class="i"><use href="#i-cam"/></svg>Resetar câmera';b.onclick=()=>{camReset();this.syncCam()};cfg.appendChild(b)}
+    sec('Cenário');
+    {const g=document.createElement('div');g.className='grid2 maps';this.mapEls={};Object.keys(MAPS).forEach(id=>{const b=document.createElement('button');b.className='act mp';b.textContent=MAPS[id].n;b.onclick=()=>{setMap(id);this.syncCam()};g.appendChild(b);this.mapEls[id]=b});cfg.appendChild(g)}
+    this.syncCam();
     if(eng.actions&&eng.actions.length){sec('Ações');const g=document.createElement('div');g.className='grid2';eng.actions.forEach(a=>{const b=document.createElement('button');b.className='act'+(a.tone==='red'?' red':'');
         const lab=()=>a.dyn?a.dyn():a.label;b.innerHTML=`<svg class="i"><use href="#${a.icon}"/></svg><span>${lab()}</span>`;b.onclick=()=>{a.run();_st(()=>{b.lastChild.textContent=lab()},60)};if(a.wide)b.style.gridColumn='1/-1';g.appendChild(b)});cfg.appendChild(g)}
     {const v=document.createElement('div');v.className='ver';v.textContent=`${C.nome.toUpperCase()} · VISUALIZADOR V99`;cfg.appendChild(v)}
     this.showTab('anim');this.filter();this.cur=-1;this.sync(true);
     useHref($('fold'),'i-chev');
   },
-  unbind(){this.eng=null;this.rows=[];this.tglEls=[];this.kitEls={};$('animlist').textContent='';$('chipbar').textContent='';$('kitgrid').textContent='';$('cfg').textContent='';$('nowName').textContent='—';$('nowMeta').textContent=''},
+  unbind(){this.eng=null;this.camEls=null;this.mapEls=null;this.rows=[];this.tglEls=[];this.kitEls={};$('animlist').textContent='';$('chipbar').textContent='';$('kitgrid').textContent='';$('cfg').textContent='';$('nowName').textContent='—';$('nowMeta').textContent=''},
   filter(){let n=0;for(const r of this.rows){const c=this.eng.clips[+r.dataset.i];const ok=(this.cat==='Tudo'||c.cat===this.cat)&&(!this.q||r.dataset.k.includes(this.q));r.hidden=!ok;if(ok)n++;
       r.querySelector('.ct').style.display=this.cat==='Tudo'?'block':'none'}
     if(this.empty)this.empty.hidden=n>0},
@@ -293,6 +329,7 @@ const UI={
   step(d){const e=this.eng;if(!e)return;const v=this.visible();if(!v.length)return;let k=v.findIndex(r=>+r.dataset.i===e.state().cur);k=k<0?0:(k+d+v.length)%v.length;e.setClip(+v[k].dataset.i);this.revealCur()},
   revealCur(){const r=this.rows[this.cur];if(r&&!r.hidden&&this.tab==='anim')_st(()=>r.scrollIntoView({block:'nearest',behavior:'smooth'}),60)},
   showInfo(s){$('skinfo').innerHTML=`<b>${s.nome}</b><div class="tags"><span class="tg">${s.tag}</span>${s.cd?`<span class="tg">Recarga ${s.cd}s</span>`:'<span class="tg">Sem recarga</span>'}${s.custo?`<span class="tg">Custo ${s.custo}</span>`:''}</div>${s.desc}`},
+  syncCam(){if(this.camEls)for(const f of this.camEls)f();if(this.mapEls)for(const k in this.mapEls)this.mapEls[k].classList.toggle('on',k===MAPID)},
   syncToggles(){for(const[t,b]of this.tglEls){const v=!!t.get();if(b._v!==v){b._v=v;b.classList.toggle('on',v)}}},
   sync(force){const e=this.eng;if(!e)return;const s=e.state(),C=this.cache;
     if(e.kit&&(s.skill||null)!==C.lblSkill){C.lblSkill=s.skill||null;const k=s.skill&&e.kit.find(x=>x.id===s.skill);if(k){$('nowName').textContent=k.nome;$('nowMeta').textContent=k.tag+' · '+(k.cd?'recarga '+k.cd+'s':'sem recarga')}else this.cur=-1}
@@ -304,11 +341,14 @@ const UI={
     if(!this.drag&&pv!==C.pv){C.pv=pv;const sb=$('seekbar');sb.value=pv;sb.style.setProperty('--p',pv/10+'%')}
     const tn=s.t.toFixed(2)+'s';if(tn!==C.tn){C.tn=tn;$('tNow').textContent=tn}
     if(s.skill!==C.skill||force){C.skill=s.skill;for(const id in this.kitEls)this.kitEls[id].classList.toggle('on',id===s.skill)}
-    if(!(this._f=(this._f||0)+1)%6||force)this.syncToggles();
+    if(!(this._f=(this._f||0)+1)%6||force){this.syncToggles();this.syncCam()}
   }
 };
 UI.init();
 
+// perda de contexto WebGL (celular sem memoria de video): recarrega o personagem atual automaticamente
+cv.addEventListener('webglcontextlost',e=>{e.preventDefault();BUSY=true});
+cv.addEventListener('webglcontextrestored',()=>{const id=CURID||'guerreiro';BUSY=false;CURID=null;loadChar(id)});
 function loop(now){_raf(loop);computeInsets();if(ENG&&!BUSY){try{ENG.frame(now)}catch(err){if(!loop.err){loop.err=1;console.error(err)}}UI.sync()}}
 window.__V99={GLC:()=>Object.assign({},GLC),live:()=>LIVE.size,sess:()=>SESS.cur&&{timers:SESS.cur.timers.size,listeners:SESS.cur.listeners.length,gl:SESS.cur.gl.length,ctxs:SESS.cur.ctxs.length,urls:SESS.cur.urls.length},
   cam:CAM,load:loadChar,cur:()=>CURID,busy:()=>BUSY,eng:()=>ENG,probe:()=>{window.__wr=ENG&&new WeakRef(ENG)}};
