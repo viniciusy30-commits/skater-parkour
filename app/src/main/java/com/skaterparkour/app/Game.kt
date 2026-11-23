@@ -253,8 +253,9 @@ class Game(private val anims: Anims, private val skel: Skeleton, val fx: Fx3, va
         var nx = P[0] + dx; var nz = P[2] + dz
         val d = D; val ex = nx - d[0]; val ez = nz - d[2]; val de = hypot(ex, ez)
         if (de < .75f) { nx = d[0] + ex / max(de, 1e-3f) * .75f; nz = d[2] + ez / max(de, 1e-3f) * .75f }
-        val r = hypot(nx, nz)
-        if (r > 14.8f) { nx *= 14.8f / r; nz *= 14.8f / r }
+        if (!MapNav.ok(nx, nz)) {
+            if (MapNav.ok(nx, P[2])) nz = P[2] else if (MapNav.ok(P[0], nz)) nx = P[0] else { nx = P[0]; nz = P[2] }
+        }
         P[0] = nx; P[2] = nz
     }
 

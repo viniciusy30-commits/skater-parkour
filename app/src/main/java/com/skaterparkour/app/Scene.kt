@@ -1,6 +1,9 @@
 package com.skaterparkour.app
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.opengl.GLUtils
 import android.opengl.GLES30.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -128,7 +131,7 @@ vec3 light(vec3 al, vec3 N, vec3 V, float metal, float shadow){
   vec3 H=normalize(L1+V); c+=vec3(1.,.9,.75)*pow(max(dot(N,H),0.),40.)*d1*(.05+metal);
   c+=vec3(.55,.45,.35)*pow(1.-max(dot(N,V),0.),3.)*.18;
   return c; }
-vec3 fogc(vec3 c, vec3 P, vec3 E){ float d=length(P-E); vec3 f=vec3(.47,.47,.52); return mix(c,f,smoothstep(28.,150.,d)*.85); }
+vec3 fogc(vec3 c, vec3 P, vec3 E){ float d=length(P-E); vec3 f=vec3(.56,.64,.74); return mix(c,f,smoothstep(90.,700.,d)*.8); }
 """
 
     const val SKIN_VS = """#version 300 es
@@ -152,7 +155,7 @@ void main(){ vec4 w=uM*vec4(uCtr+aPos.xyz*uExt,1.); vP=w.xyz; vN=mat3(uM)*normal
 precision highp float;
 in vec2 vUV;in vec3 vN;in vec3 vP;uniform sampler2D uTex;uniform vec3 uCam;uniform float uMetal;uniform float uRune,uTm,uRim;uniform vec3 uRC;
 out vec4 o;
-vec3 fogc(vec3 c, vec3 P, vec3 E){ float d=length(P-E); vec3 f=vec3(.47,.47,.52); return mix(c,f,smoothstep(28.,150.,d)*.85); }
+vec3 fogc(vec3 c, vec3 P, vec3 E){ float d=length(P-E); vec3 f=vec3(.56,.64,.74); return mix(c,f,smoothstep(90.,700.,d)*.8); }
 void main(){vec3 N=normalize(vN);if(!gl_FrontFacing)N=-N;vec3 V=normalize(uCam-vP);
  vec3 al=pow(texture(uTex,vUV).rgb,vec3(2.2));
  vec3 L1=normalize(vec3(.5,.9,.7)),L2=normalize(vec3(-.8,.3,-.5));
@@ -221,6 +224,28 @@ void main(){
   c=fogc(c,vW,uCam);
   o=vec4(pow(c,vec3(1./2.2)),1.); }"""
 
+    const val MAP_VS = """#version 300 es
+precision highp float;
+layout(location=0) in vec3 aP; layout(location=1) in vec4 aN; layout(location=2) in vec2 aUV;
+uniform mat4 uVP; out vec2 vUV; out vec3 vN; out vec3 vP;
+void main(){ vP=aP; vN=aN.xyz; vUV=aUV; gl_Position=uVP*vec4(aP,1.); }"""
+
+    const val MAP_FS = """#version 300 es
+precision highp float;
+in vec2 vUV; in vec3 vN; in vec3 vP; uniform sampler2D uTex; uniform vec3 uCam; uniform vec4 uSh[3]; uniform float uMask; out vec4 o;
+""" + LIGHT + """
+void main(){
+  vec4 t=texture(uTex,vUV); if(uMask>.5 && t.a<.5) discard;
+  vec3 N=normalize(vN); if(!gl_FrontFacing) N=-N; vec3 V=normalize(uCam-vP);
+  float sh=1.;
+  if(N.y>.6 && abs(vP.y)<.7){ for(int i=0;i<3;i++){ vec4 s=uSh[i]; if(s.z<=0.) continue; float d=length(vP.xz-s.xy)/s.z; sh*=1.-s.w*smoothstep(1.,.15,d); } }
+  vec3 al=pow(t.rgb,vec3(2.2));
+  vec3 c=light(al,N,V,0.,1.)*sh;
+  c=mix(c,vec3(.56,.64,.74)*.9,smoothstep(-4.,-70.,vP.y)*.55);
+  c=fogc(c,vP,uCam);
+  c=c/(1.+c*.12)*1.08;
+  o=vec4(pow(c,vec3(1./2.2)),1.); }"""
+
     const val SKY_VS = """#version 300 es
 precision highp float; layout(location=0) in vec2 aP; out vec2 vP; void main(){ vP=aP; gl_Position=vec4(aP,.9999,1.); }"""
 
@@ -229,7 +254,7 @@ precision highp float; in vec2 vP; uniform mat4 uIVP; uniform vec3 uCam; out vec
 float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
 void main(){ vec4 w=uIVP*vec4(vP,1.,1.); vec3 d=normalize(w.xyz/w.w-uCam);
-  float y=d.y; vec3 hor=vec3(.47,.47,.52), zen=vec3(.16,.24,.40), warm=vec3(.95,.62,.38);
+  float y=d.y; vec3 hor=vec3(.56,.64,.74), zen=vec3(.16,.24,.40), warm=vec3(.95,.62,.38);
   vec3 c=mix(hor,zen,smoothstep(0.,.55,y));
   vec3 sd=normalize(vec3(.55,.25,.45)); float sun=max(dot(d,sd),0.);
   c+=warm*pow(sun,6.)*.45+vec3(1.,.9,.7)*pow(sun,300.)*1.5;
@@ -239,86 +264,85 @@ void main(){ vec4 w=uIVP*vec4(vP,1.,1.); vec3 d=normalize(w.xyz/w.w-uCam);
   o=vec4(c,1.); }"""
 }
 
-/** Cenário: céu, campo de treino, cerca, tochas, montanhas. */
+/** Passagens para a navegação: onde o guerreiro pode andar (grade de 0,5 m calculada do mapa). */
+object MapNav {
+    private var w = 0; private var h = 0; private var x0 = 0f; private var z0 = 0f; private var cs = .5f
+    private var g = ByteArray(0)
+
+    fun load(ctx: Context) {
+        val b = ByteBuffer.wrap(Gl.readAsset(ctx, "map/walk.bin")).order(ByteOrder.LITTLE_ENDIAN)
+        w = b.int; h = b.int; x0 = b.float; z0 = b.float; cs = b.float
+        g = ByteArray(w * h); b.get(g)
+    }
+
+    fun ok(x: Float, z: Float): Boolean {
+        if (g.isEmpty()) return true
+        val fx = (x - x0) / cs; val fz = (z - z0) / cs
+        if (fx < 0f || fz < 0f) return false
+        val ix = fx.toInt(); val iz = fz.toInt()
+        if (ix >= w || iz >= h) return false
+        return g[iz * w + ix].toInt() != 0
+    }
+}
+
+/** Cenário: o mapa Howling Abyss (modelo de Uriel Esquivel Cobos, CC-BY-4.0) com as texturas originais, e o céu. */
 class Arena {
     val torches = ArrayList<FloatArray>()
-    private lateinit var props: CMesh
-    private var progC = 0; private var progG = 0; private var progS = 0
-    private var gVao = 0; private var sVao = 0
+    private class Grp(val vao: Int, val n: Int, val tex: Int, val mask: Boolean)
+    private val groups = ArrayList<Grp>()
+    private var progM = 0; private var progS = 0; private var sVao = 0
+    private var uVP = 0; private var uCam = 0; private var uSh = 0; private var uMask = 0; private var uTex = 0
 
-    fun init() {
-        progC = Gl.program(Shaders.COL_VS, Shaders.COL_FS)
-        progG = Gl.program(Shaders.GROUND_VS, Shaders.GROUND_FS)
+    private fun loadTex(ctx: Context, name: String, mask: Boolean): Int {
+        val bytes = Gl.readAsset(ctx, name)
+        val opt = BitmapFactory.Options().apply {
+            inScaled = false
+            inPreferredConfig = if (mask) Bitmap.Config.ARGB_8888 else Bitmap.Config.RGB_565
+        }
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opt)
+        val t = Gl.gen(::glGenTextures)
+        glBindTexture(GL_TEXTURE_2D, t)
+        GLUtils.texImage2D(GL_TEXTURE_2D, 0, bmp, 0)
+        bmp.recycle()
+        glGenerateMipmap(GL_TEXTURE_2D)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+        glTexParameterf(GL_TEXTURE_2D, 0x84FE, 8f) // filtragem anisotrópica (ignorada se não existir)
+        return t
+    }
+
+    fun init(ctx: Context) {
+        progM = Gl.program(Shaders.MAP_VS, Shaders.MAP_FS)
         progS = Gl.program(Shaders.SKY_VS, Shaders.SKY_FS)
+        uVP = glGetUniformLocation(progM, "uVP"); uCam = glGetUniformLocation(progM, "uCam"); uSh = glGetUniformLocation(progM, "uSh")
+        uMask = glGetUniformLocation(progM, "uMask"); uTex = glGetUniformLocation(progM, "uTex")
         val q = floatArrayOf(-1f, -1f, 1f, -1f, 1f, 1f, -1f, -1f, 1f, 1f, -1f, 1f)
         val fb = Gl.floats(12); fb.put(q); fb.flip()
-        for (k in 0 until 2) {
-            val vao = Gl.gen(::glGenVertexArrays); glBindVertexArray(vao)
-            val vbo = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, vbo); fb.position(0); glBufferData(GL_ARRAY_BUFFER, 48, fb, GL_STATIC_DRAW)
-            glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, false, 8, 0)
-            if (k == 0) gVao = vao else sVao = vao
-        }
+        sVao = Gl.gen(::glGenVertexArrays); glBindVertexArray(sVao)
+        val svbo = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, svbo); glBufferData(GL_ARRAY_BUFFER, 48, fb, GL_STATIC_DRAW)
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, false, 8, 0)
         glBindVertexArray(0)
 
-        val m = CMesh()
-        val wood = floatArrayOf(.40f, .27f, .16f); val woodD = floatArrayOf(.28f, .19f, .11f)
-        // cerca de madeira
-        val R = 15.5f; val nPost = 40
-        for (i in 0 until nPost) {
-            val a = i * 6.2832f / nPost
-            if (i % 10 == 0) continue // entradas
-            val x = cos(a) * R; val z = sin(a) * R
-            m.box(x, .7f, z, .2f, 1.4f, .2f, -a, woodD)
-            val a2 = (i + 1) * 6.2832f / nPost
-            if ((i + 1) % 10 == 0) continue
-            val x2 = cos(a2) * R; val z2 = sin(a2) * R
-            val mx = (x + x2) / 2; val mz = (z + z2) / 2; val len = hypot(x2 - x, z2 - z)
-            val yaw = atan2(x2 - x, z2 - z)
-            m.box(mx, 1.05f, mz, .08f, .12f, len, yaw, wood)
-            m.box(mx, .55f, mz, .08f, .12f, len, yaw, wood)
+        MapNav.load(ctx)
+        val bytes = Gl.readAsset(ctx, "map/map.bin")
+        val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        b.int; val ng = b.int; val nt = b.int
+        for (i in 0 until nt) torches.add(floatArrayOf(b.float, b.float, b.float))
+        for (k in 0 until ng) {
+            val mat = b.int; val mask = b.int != 0; val nv = b.int; val ni = b.int
+            val vb = Gl.direct(nv * 24); vb.put(bytes, b.position(), nv * 24); vb.flip(); b.position(b.position() + nv * 24)
+            val ib = Gl.direct(ni * 4); ib.put(bytes, b.position(), ni * 4); ib.flip(); b.position(b.position() + ni * 4)
+            val vao = Gl.gen(::glGenVertexArrays); glBindVertexArray(vao)
+            val vbo = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, vbo); glBufferData(GL_ARRAY_BUFFER, nv * 24, vb, GL_STATIC_DRAW)
+            glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, false, 24, 0)
+            glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_BYTE, true, 24, 12)
+            glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, false, 24, 16)
+            val ibo = Gl.gen(::glGenBuffers); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo); glBufferData(GL_ELEMENT_ARRAY_BUFFER, ni * 4, ib, GL_STATIC_DRAW)
+            glBindVertexArray(0)
+            groups.add(Grp(vao, ni, loadTex(ctx, "map/t$mat.webp", mask), mask))
         }
-        // tochas
-        for (i in 0 until 6) {
-            val a = i * 6.2832f / 6 + .26f
-            val x = cos(a) * 10.6f; val z = sin(a) * 10.6f
-            m.cyl(x, 0f, z, .09f, .07f, 1.9f, 8, woodD)
-            m.cyl(x, 1.9f, z, .16f, .2f, .22f, 8, floatArrayOf(.18f, .16f, .15f))
-            torches.add(floatArrayOf(x, 2.18f, z))
-        }
-        // suportes de armas e barris
-        for (i in 0 until 3) {
-            val a = 2.3f + i * .32f; val x = cos(a) * 13f; val z = sin(a) * 13f
-            m.cyl(x, 0f, z, .32f, .32f, .85f, 12, floatArrayOf(.36f, .25f, .15f), jitter = .2f)
-            m.cyl(x, .2f, z, .335f, .335f, .06f, 12, floatArrayOf(.2f, .2f, .22f), caps = false)
-            m.cyl(x, .62f, z, .335f, .335f, .06f, 12, floatArrayOf(.2f, .2f, .22f), caps = false)
-        }
-        run {
-            val a = -1.9f; val x = cos(a) * 12.8f; val z = sin(a) * 12.8f; val yaw = -a + 1.57f
-            m.box(x, .9f, z, 2.4f, .12f, .12f, yaw, wood); m.box(x, 1.5f, z, 2.4f, .12f, .12f, yaw, wood)
-            m.box(x + cos(yaw) * 1.1f, .85f, z - sin(yaw) * 1.1f, .14f, 1.7f, .14f, yaw, woodD)
-            m.box(x - cos(yaw) * 1.1f, .85f, z + sin(yaw) * 1.1f, .14f, 1.7f, .14f, yaw, woodD)
-            for (k in 0 until 4) {
-                val o = -.75f + k * .5f
-                m.box(x + cos(yaw) * o, 1.2f, z - sin(yaw) * o, .05f, 1.4f, .05f, yaw, floatArrayOf(.5f, .5f, .52f), .25f)
-            }
-        }
-        // pedras espalhadas
-        for (i in 0 until 26) {
-            val a = i * 2.39996f; val r = 17f + (i * 37 % 23)
-            m.sphere(cos(a) * r, -.1f, sin(a) * r, .5f + (i % 5) * .25f, .55f, floatArrayOf(.36f, .35f, .33f), 8)
-        }
-        // montanhas ao longe
-        val NM = 72; val RM = 150f
-        fun hgt(i: Int): Float { val a = i * 6.2832f / NM; return 14f + 10f * sin(a * 3f + 1f) + 7f * sin(a * 7f + 2f) + 4f * sin(a * 13f) }
-        for (i in 0 until NM) {
-            val a0 = i * 6.2832f / NM; val a1 = (i + 1) * 6.2832f / NM
-            val h0 = hgt(i); val h1 = hgt(i + 1)
-            val c = floatArrayOf(.25f, .28f, .33f); val cT = floatArrayOf(.33f, .35f, .40f)
-            val b0 = floatArrayOf(cos(a0) * RM, -2f, sin(a0) * RM); val b1 = floatArrayOf(cos(a1) * RM, -2f, sin(a1) * RM)
-            val t0 = floatArrayOf(cos(a0) * (RM + 25f), h0, sin(a0) * (RM + 25f)); val t1 = floatArrayOf(cos(a1) * (RM + 25f), h1, sin(a1) * (RM + 25f))
-            m.raw(b0, t0, t1, cT); m.raw(b0, t1, b1, c)
-        }
-        m.upload(); props = m
     }
 
     fun draw(vp: FloatArray, ivp: FloatArray, eye: FloatArray, shadows: FloatArray) {
@@ -329,23 +353,19 @@ class Arena {
         glUniform3fv(glGetUniformLocation(progS, "uCam"), 1, eye, 0)
         glBindVertexArray(sVao); glDrawArrays(GL_TRIANGLES, 0, 6)
         glDepthMask(true)
-        // chão
-        glUseProgram(progG)
-        glUniformMatrix4fv(glGetUniformLocation(progG, "uVP"), 1, false, vp, 0)
-        glUniform3fv(glGetUniformLocation(progG, "uCam"), 1, eye, 0)
-        glUniform4fv(glGetUniformLocation(progG, "uSh"), 3, shadows, 0)
-        glBindVertexArray(gVao); glDrawArrays(GL_TRIANGLES, 0, 6)
-        // objetos
-        drawCol(props, vp, eye, M4.id(), null)
-    }
-
-    fun drawCol(m: CMesh, vp: FloatArray, eye: FloatArray, model: FloatArray, flash: FloatArray?) {
-        glUseProgram(progC)
-        glUniformMatrix4fv(glGetUniformLocation(progC, "uVP"), 1, false, vp, 0)
-        glUniformMatrix4fv(glGetUniformLocation(progC, "uM"), 1, false, model, 0)
-        glUniform3fv(glGetUniformLocation(progC, "uCam"), 1, eye, 0)
-        glUniform3fv(glGetUniformLocation(progC, "uFlash"), 1, flash ?: floatArrayOf(0f, 0f, 0f), 0)
-        m.draw()
+        // mapa
+        glUseProgram(progM)
+        glUniformMatrix4fv(uVP, 1, false, vp, 0)
+        glUniform3fv(uCam, 1, eye, 0)
+        glUniform4fv(uSh, 3, shadows, 0)
+        glUniform1i(uTex, 0)
+        glActiveTexture(GL_TEXTURE0)
+        for (pass in 0..1) for (g in groups) {
+            if (g.mask != (pass == 1)) continue
+            glUniform1f(uMask, pass.toFloat())
+            glBindTexture(GL_TEXTURE_2D, g.tex)
+            glBindVertexArray(g.vao); glDrawElements(GL_TRIANGLES, g.n, GL_UNSIGNED_INT, 0)
+        }
     }
 
     companion object {

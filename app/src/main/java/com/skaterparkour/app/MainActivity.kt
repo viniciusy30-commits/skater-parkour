@@ -32,11 +32,11 @@ class MainActivity : AppCompatActivity() {
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
             preserveEGLContextOnPause = true
         }
-        // desempenho: renderiza o 3D numa resolução interna menor (no máx. 760 px de altura) e o sistema amplia
+        // desempenho: renderiza o 3D numa resolução interna menor (no máx. 1080 px de altura) e o sistema amplia
         run {
             val dm = resources.displayMetrics
             val w = maxOf(dm.widthPixels, dm.heightPixels); val h = minOf(dm.widthPixels, dm.heightPixels)
-            if (h > 760) { val k = 760f / h; glView.holder.setFixedSize((w * k).toInt(), 760) }
+            if (h > 1080) { val k = 1080f / h; glView.holder.setFixedSize((w * k).toInt(), 1080) }
         }
         val root = FrameLayout(this)
         root.addView(glView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))

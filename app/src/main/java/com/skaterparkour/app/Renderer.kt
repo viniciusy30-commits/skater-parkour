@@ -41,16 +41,16 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
-            glClearColor(.47f, .47f, .52f, 1f)
+            glClearColor(.56f, .64f, .74f, 1f)
             loadMsg = "Carregando o guerreiro…"
             rig = Rig(ctx); anims = Anims(ctx); skel = Skeleton(rig, anims)
             body = WMesh(ctx, "w/char.msh", true)
             cap = WMesh(ctx, "w/cap.msh", true)
             weapon = WMesh(ctx, "w/weapon.msh", false)
             texBody = Gl.texture(ctx, "w/char.jpg"); texWeap = Gl.texture(ctx, "w/weapon.jpg")
-            loadMsg = "Montando o campo de treino…"
+            loadMsg = "Carregando o mapa…"
             fx = Fx3(ctx); trl = Trl(); bld = Bld(ctx); sw = Sw(ctx)
-            arena = Arena(); arena.init()
+            arena = Arena(); arena.init(ctx)
             progSkin = Gl.program(Shaders.SKIN_VS, Shaders.TEX_FS)
             progWeap = Gl.program(Shaders.WEAP_VS, Shaders.TEX_FS)
             for (n in listOf("uBones", "uTex", "uVP", "uM", "uCtr", "uExt", "uCam", "uMetal", "uRune", "uRim", "uTm", "uRC")) {
@@ -73,7 +73,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
 
     override fun onSurfaceChanged(gl: GL10?, w: Int, h: Int) {
         glViewport(0, 0, w, h); vw = w; vh = h
-        Matrix.perspectiveM(proj, 0, 52f, w.toFloat() / max(1, h), .1f, 420f)
+        Matrix.perspectiveM(proj, 0, 52f, w.toFloat() / max(1, h), .1f, 1800f)
     }
 
     fun projected(out: FloatArray): FloatArray { synchronized(vpShared) { System.arraycopy(vpShared, 0, out, 0, 16) }; return out }

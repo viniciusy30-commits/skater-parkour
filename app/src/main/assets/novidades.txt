@@ -1,3 +1,9 @@
+#id 2026-11-23-a
+#titulo Novo mapa: Howling Abyss
+- O campo de treino agora é o mapa Howling Abyss (modelo de Uriel Esquivel Cobos, CC-BY-4.0), com as texturas originais: ponte, torres, nexus, estátuas, abismo e montanhas
+- Qualidade gráfica maior: resolução interna subiu de 760 para 1080 px, texturas bem mais nítidas, filtragem anisotrópica, névoa de distância e sombra do personagem no chão
+- O guerreiro anda só pela lane (as bordas e o abismo bloqueiam)
+
 #id 2026-11-22-b
 #titulo Guerreiro nativo: campo de treino
 - O jogo agora é só do Guerreiro, tudo nativo (sem página HTML dentro do app). Parkour e os outros personagens foram removidos

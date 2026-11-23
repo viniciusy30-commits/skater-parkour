@@ -33,7 +33,7 @@ android {
     }
 
     androidResources {
-        noCompress += listOf("bin", "jpg", "msh", "ogg")
+        noCompress += listOf("bin", "jpg", "msh", "ogg", "webp")
     }
 
     compileOptions {
