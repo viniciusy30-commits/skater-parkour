@@ -46,7 +46,14 @@ for k, d in extras.items():
 warrior_raw = raw.getvalue()
 warrior_z = zlib.compress(warrior_raw, 9)
 print('guerreiro raw %.1f MB -> %.1f MB' % (len(warrior_raw) / 1e6, len(warrior_z) / 1e6))
-mman = json.load(open(mm_path)); mraw = open(mb_path, 'rb').read(); merc_z = zlib.compress(mraw, 9)
+mman = json.load(open(mm_path)); mraw = open(mb_path, 'rb').read()
+AUR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auras')
+mman['extra'] = {}; mb = io.BytesIO(); mb.write(mraw)
+for k in ('flip', 'glow', 'shards'):
+    d = open(os.path.join(AUR, 'aura_%s.png' % k), 'rb').read()
+    while mb.tell() % 4: mb.write(b'\0')
+    mman['extra']['aura.' + k] = [mb.tell(), len(d)]; mb.write(d)
+mraw = mb.getvalue(); merc_z = zlib.compress(mraw, 9)
 print('mercenario raw %.1f MB -> %.1f MB' % (len(mraw) / 1e6, len(merc_z) / 1e6))
 
 # ------------------------------------------------------------------ prelude (inflate, matematica, shaders)

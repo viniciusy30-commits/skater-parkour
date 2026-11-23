@@ -101,7 +101,13 @@ void main(){vec4 p=vec4(uCtr+aPos.xyz*uExt,1.);mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+
   if(c>0.){vec3 q=w.xyz;for(int s=0;s<2;s++){for(int k=0;k<2;k++){int o=s*4+k;q=coll(q,p.xyz,uCapB[o],uCapB[o+1],uCap[o],uCap[o+1]);}}w.xyz=mix(w.xyz,q,c);}
   w=uAct*w;vLow=aPos.w>.001?1.:0.;vP=w.xyz;vN=mat3(uAct)*mat3(m)*normalize(aNrm.xyz);vUV=aUV;gl_Position=uVP*w;}`;
   const FS_LM=FS_L.replace('in vec2 vUV;','in float vLow;in vec2 vUV;').replace('void main(){','void main(){if(vLow>.5&&!gl_FrontFacing)discard;');
-  const PC=prg(VS_CM,FS_LM),PW=prg(VS_W,FS_L),PG=prg(VS_G,FS_G);
+  const PC=prg(VS_CM,FS_LM),PW=prg(VS_W,FS_L);
+  // chao do Mercenario: a grade fica fixa no mundo e o disco de luz acompanha o personagem (dash nao "sai" do cenario)
+  const FSG=FS_G.replace('uniform vec2 uSh;','uniform vec2 uSh;uniform vec2 uOff;').replace('vec2 g=abs(fract(vW*2.-.5)-.5)/fwidth(vW*2.);','vec2 vWw=vW+uOff;vec2 g=abs(fract(vWw*2.-.5)-.5)/fwidth(vWw*2.);').replace('length((vW-uSh)','length((vWw-uSh)');
+  if(FSG===FS_G)console.warn('ground patch');
+  const VSG=VS_G.replace('uniform mat4 uVP;','uniform mat4 uVP;uniform vec2 uOff;').replace('vec4(vW.x,0.,vW.y,1.)','vec4(vW.x+uOff.x,0.,vW.y+uOff.y,1.)');
+  if(VSG===VS_G)console.warn('ground vs patch');
+  const PG=prg(VSG,FSG);
   const capIdx=man.cap.flat(),capBuf=new Float32Array(24),capBind=new Float32Array(24);
   async function tex(range){const b=new Blob([new Uint8Array(buf,range[0],range[1])],{type:'image/jpeg'});const bm=await createImageBitmap(b);
     const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.NONE);
@@ -218,7 +224,7 @@ async function loadChar(id){
 
 // ---------------------------------------------------------------- interface
 const norm=s=>s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-const SPEEDS=[.25,.5,1,1.5,2];
+const SPEEDS=[.1,.25,.5,1,1.5,2];
 const fmtX=v=>(v===1?'1':String(v))+'×';
 const useHref=(el,id)=>{el.querySelector('use').setAttribute('href','#'+id)};
 const UI={

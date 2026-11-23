@@ -13,6 +13,7 @@
   const vnorm=a=>{const l=vlen(a)||1;return[a[0]/l,a[1]/l,a[2]/l]},vmix=(a,b,u)=>[lerp(a[0],b[0],u),lerp(a[1],b[1],u),lerp(a[2],b[2],u)];
   const CY=[.35,.86,1],WH=[1,1,1],VI=[.62,.42,1],MG=[1,.32,.78],GO=[1,.82,.4];
   // ---- ator (personagem) no mundo: posicao + giro; o rig anima "no lugar"
+  const BASE={x:0,z:0};
   const act={x:0,y:0,z:0,yaw:0,vis:true},actM=new Float32Array(16),mA=new Float32Array(16);
   function buildAct(o,x,y,z,yaw){const c=Math.cos(yaw),s=Math.sin(yaw);o.fill(0);o[0]=c;o[2]=-s;o[5]=1;o[8]=s;o[10]=c;o[12]=x;o[13]=y;o[14]=z;o[15]=1;return o}
   const toW=(p,a=act)=>{const c=Math.cos(a.yaw),s=Math.sin(a.yaw);return[a.x+c*p[0]+s*p[2],a.y+p[1],a.z-s*p[0]+c*p[2]]};
@@ -87,8 +88,9 @@
       if(dt>0&&kk>.04&&act.vis&&showW)b.hist.push({b:base,t:tip,age:0,k:kk});
       while(b.hist.length&&b.hist[0].age>trailLife)b.hist.shift()}}
   let trailBoost=0,trailLife=.3,trailCol=CY;
+  const tcol=i=>auraOn()?vmix(AUC[i],trailCol,.22):trailCol;
   // ---- reacao do alvo + impacto
-  function hitFx(h,pw,o={}){const c=o.at||tgPoint();const v=BL[h].sp>3?vnorm(BL[h].v):[rnd(-1,1),rnd(-.4,.6),0];
+  function hitFx(h,pw,o={}){const c=o.at||tgPoint();if(!o.col&&auraOn())o=Object.assign({},o,{col:vmix(AUC[h],[1,1,1],.15)});const v=BL[h].sp>3?vnorm(BL[h].v):[rnd(-1,1),rnd(-.4,.6),0];
     const ang=Math.atan2(vdot(v,camU),vdot(v,camR));
     if(!o.noArc){arc(c,.34*pw*(o.big||1),ang+Math.PI/2,2.2,.07*pw,.22,o.col||CY,{grow:.045});line(vadd(c,vmul(v,-.9*pw)),vadd(c,vmul(v,.9*pw)),.035*pw,.16,WH,{grow:.03})}
     burst(c,Math.round(10+10*pw),3.4*pw,.05,o.col||CY,.42,-5,.4,vmul(v,1.2));burst(c,5,5*pw,.03,WH,.28,-6,0,vmul(v,2));
@@ -114,7 +116,7 @@
           const w=g?1.7:1;const mid=(p,q)=>vmix(p,q,.5);const ma=mid(a.b,a.t),mb=mid(b.b,b.t);
           const ba=vadd(ma,vmul(vsub(a.b,ma),w)),ta=vadd(ma,vmul(vsub(a.t,ma),w)),bb=vadd(mb,vmul(vsub(b.b,mb),w)),tb=vadd(mb,vmul(vsub(b.t,mb),w));
           const al0=u0*u0*a.k*(g?.8:1.1),al1=u1*u1*b.k*(g?.8:1.1),z0=(1-u0)+(g?10:0),z1=(1-u1)+(g?10:0);
-          rv(ba,al0,0,z0,trailCol);rv(ta,al0,1,z0,trailCol);rv(bb,al1,0,z1,trailCol);rv(ta,al0,1,z0,trailCol);rv(tb,al1,1,z1,trailCol);rv(bb,al1,0,z1,trailCol)}}}
+          const tc=tcol(i);rv(ba,al0,0,z0,tc);rv(ta,al0,1,z0,tc);rv(bb,al1,0,z1,tc);rv(ta,al0,1,z0,tc);rv(tb,al1,1,z1,tc);rv(bb,al1,0,z1,tc)}}}
     for(let q=RIB.length-1;q>=0;q--){const r=RIB[q];r.age+=dt;if(r.age>=r.life){RIB.splice(q,1);continue}
       const u=r.age/r.life,fadeU=r.age<r.hold?0:(r.age-r.hold)/Math.max(1e-3,r.life-r.hold);let al=r.a*Math.pow(1-fadeU,1.5)*(r.flare?1+r.flare*Math.sin(u*3.14):1);
       const N=r.k==='ring'?56:22,P=[],Wd=[],Al=[];
@@ -193,24 +195,21 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
       r.ev=P.map(e=>({s:0,f:e.f,fn:()=>{if(e.quiet){SFX.swish(1.2);return}hitFx(e.h,e.pw,{col:r.part===3?[.7,.55,1]:CY});if(e.both){hitFx(1-e.h,e.pw,{col:CY,dmg:false});}
         if(e.fin){arc(tgPoint(),.7,.8,2.6,.1,.3,WH,{grow:.05});arc(tgPoint(),.7,-.8,2.6,.1,.3,CY,{grow:.05});flash(.18,'#bfeaff');slow(.2,.07);shake(.4);TG.tv+=3;burst(tgPoint(),30,5,.06,CY,.6,-5)}}}));
       if(r.part===0)SFX.swish(1);},
-    tick(r,dt,f){const Z=Math.min((TG.on?TG.z:1.7)-.95,[.55,.7,.78,.78][r.part]);act.z+=(Z-act.z)*clp(dt*15,0,1)},end(r){BQ.last=performance.now()/1000;BQ.i=(BQ.i+1)%4}};
+    tick(r,dt,f){const Z=Math.min((TG.on?TG.z:r.bz+1.7)-.95,r.bz+[.55,.7,.78,.78][r.part]);act.z+=(Z-act.z)*clp(dt*15,0,1)},end(r){BQ.last=performance.now()/1000;BQ.i=(BQ.i+1)%4}};
   // S1: INVESTIDA FANTASMA — atravessa o alvo em um piscar de olhos, deixando imagens residuais
   DEF.s1={nome:'Investida Fantasma',tag:'Skill 1',
     seq:()=>[{clip:CI['Dash A'],f0:0,f1:25,spd:1.12}],
-    start(r){r.hit=false;r.gt=0;r.back=false;trailLife=.42;trailCol=CY;SFX.dash();banner(this.nome,this.tag);burst(vadd([act.x,.5,act.z],[0,0,0]),16,2.5,.05,CY,.35,0);ghostNow({life:.35,col:CY,a:.8})},
+    start(r){r.hit=false;r.gt=0;trailLife=.42;trailCol=CY;SFX.dash();banner(this.nome,this.tag);burst(vadd([act.x,.5,act.z],[0,0,0]),16,2.5,.05,CY,.35,0);ghostNow({life:.35,col:CY,a:.8})},
     ev:[],
-    tick(r,dt,f){const Z0=0,Z1=3.45;
+    tick(r,dt,f){const Z0=r.bz,Z1=r.bz+3.45;
       if(f<2){trailBoost=0}else if(f<10){const u=ss(2,9.2,f);act.z=lerp(Z0,Z1,u);trailBoost=1;
         r.gt-=dt;if(r.gt<=0){r.gt=.022;ghostNow({life:.4,col:CY,a:.85});}
         for(let i=0;i<3;i++){const o=[rr(-.5,.5),rr(.1,.95),0];const p=toW(o);line([p[0],p[1],p[2]-rr(.2,.5)],[p[0],p[1],p[2]-rr(1.2,2.4)],.012,.18,i%2?WH:CY,{grow:.02})}
         if(!r.hit&&act.z>=TG.z-.2){r.hit=true;hitFx(0,1.9,{big:1.6,col:CY,shake:.25,dmg:900});hitFx(1,1.9,{big:1.6,col:WH,dmg:false});
           line([TG.x-1.6,.6,TG.z],[TG.x+1.6,.6,TG.z],.1,.38,WH,{grow:.03,flare:.7});line([TG.x-1.2,.1,TG.z-.1],[TG.x+1.2,1.1,TG.z+.1],.05,.3,CY,{grow:.03});line([TG.x+1.2,.1,TG.z-.1],[TG.x-1.2,1.1,TG.z+.1],.05,.3,CY,{grow:.03});
           flash(.22,'#cfefff');slow(.16,.09);TG.tv+=3.5;ring([TG.x,.03,TG.z],.1,2.2,.12,.45,CY);burst(tgPoint(),40,6,.06,CY,.6,-5);SFX.boom(.35)}}
-      else if(f<18.5){trailBoost=.2;act.z=Z1}
-      else if(f<22){const u=ss(18.5,21.5,f);const zn=lerp(Z1,Z0,u);if(zn<act.z-.05){ghostNow({life:.3,col:VI,a:.6})}act.z=zn;trailBoost=.8;
-        if(f>=21&&!r.back){r.back=true;burst([0,.5,0],18,3,.05,CY,.4,0);ring([0,.03,0],.1,1.1,.07,.4,CY)}}
-      else{act.z=Z0;trailBoost=0}},
-    end(r){act.z=0;trailBoost=0}};
+      else{trailBoost=f<18?.25:0;act.z=Z1}},
+    end(r){BASE.x=act.x;BASE.z=act.z;trailBoost=0}};
   // S2: TEMPESTADE DE ACO — rajada de dezenas de cortes em um segundo
   const RAPID_F=[5,7,9,11,12,14,15,18,18,20,21,23,24,26,27,29,30,32,33,35,36,38,39,41,42,44,45,47,48,50,51];
   DEF.s2={nome:'Tempestade de Aço',tag:'Skill 2',
@@ -309,13 +308,14 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
         if(q>1.05&&TG.fade<=0&&!r.resp){r.resp=1;TG.fade=1}
         r.gt-=dt;if(r.gt<=0&&q<1.4){r.gt=.035;spark([TG.x+rr(-3,3),rr(0,.2),TG.z+rr(-3,3)],[rr(-.3,.3),rr(2,5),rr(-.3,.3)],1.1,.06,i3(),1,-1.5)}
         trailBoost=q<.8?1:0;if(q>1.9)r.done=true}}
-    ,end(r){act.vis=true;act.x=act.y=act.z=0;act.yaw=0;CAMF.dim=0;CAMF.zt=1;CAMF.roll=0;trailBoost=0;TG.vis=1;TG.fade=0;
+    ,end(r){act.vis=true;act.x=BASE.x;act.y=0;act.z=BASE.z;act.yaw=0;CAMF.dim=0;CAMF.zt=1;CAMF.roll=0;trailBoost=0;TG.vis=1;TG.fade=0;
       r.lines&&r.lines.forEach(l=>{l.life=Math.min(l.life,l.age+.3)})}};
   // ---------------------------------------------------------------------------------------------------
   function setClipRaw(i,f){if(clips[cur]&&!restMode){prev={q:new Float32Array(sQ),pt:new Float32Array(sP),ci:cur,t0:t};blend=0}cur=i;t=f/30}
   function startSkill(id){const def=DEF[id];if(!def)return;AC();
     if(run){const o=run;run=null;o.def.end&&o.def.end(o)}
-    const chain=id==='basic'&&run&&run.id==='basic';run={id,def,i:0,lf:-1,evd:new Set(),el:0,queued:false};if(!chain&&!(id==='basic'&&act.z>.3&&BQ.i>0)){act.x=act.y=act.z=0}act.yaw=0;act.vis=true;TG.vis=1;TG.fade=0;TG.on&&(TG.x=0,TG.z=1.7,TG.y=0,TG.vy=0,TG.air=false);
+    run={id,def,i:0,lf:-1,evd:new Set(),el:0,queued:false,bx:BASE.x,bz:BASE.z};if(!(id==='basic'&&act.z-BASE.z>.3&&BQ.i>0)){act.x=BASE.x;act.z=BASE.z}act.y=0;act.yaw=0;act.vis=true;
+    {const nx=BASE.x,nz=BASE.z+1.7;if(Math.hypot(TG.x-nx,TG.z-nz)>.3){TG.vis=0;TG.fade=1}else TG.vis=1;TG.x=nx;TG.z=nz;TG.y=0;TG.vy=0;TG.air=false;TG.tilt=0;TG.tv=0}
     playing=true;loop=false;blendDur=.12;trailBoost=0;
     CAMF.zt=id==='ult'?1:1.22;
     def.start&&def.start.call(def,run);
@@ -323,8 +323,8 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
   function beginSeg(i){const s=run.segs[i];run.i=i;run.lf=s.f0-1;run.evd=new Set();if(i===0&&run.id!=='basic'){setClipRaw(s.clip,s.f0)}else setClipRaw(s.clip,s.f0);blendDur=run.id==='basic'?.07:.1}
   function endSkill(){const r=run;if(!r)return;run=null;r.def.end&&r.def.end(r);
     if(r.id==='basic'&&r.queued){BQ.last=performance.now()/1000;startSkill('basic');return}
-    if(act.z>.3&&r.id!=='ult'&&r.id!=='s1'){ghostNow({life:.3,col:VI,a:.6});burst([act.x,.5,act.z],12,3,.05,CY,.35,0)}
-    act.x=act.y=act.z=0;act.yaw=0;act.vis=true;trailBoost=0;blendDur=.35;CAMF.zt=1;
+    if(act.z-BASE.z>.3&&r.id!=='ult'&&r.id!=='s1'){ghostNow({life:.3,col:VI,a:.6});burst([act.x,.5,act.z],12,3,.05,CY,.35,0)}
+    act.x=BASE.x;act.y=0;act.z=BASE.z;act.yaw=0;act.vis=true;trailBoost=0;blendDur=.35;CAMF.zt=1;
     setClipRaw(CI.Idle,0);loop=true;playing=true;trailLife=.3;trailCol=CY}
   function useSkill(id){AC();if(id==='basic'&&run&&run.id==='basic'){run.queued=true;return}
     if(id==='basic'){const n=performance.now()/1000;if(n-BQ.last>1.6)BQ.i=0;startSkill('basic');return}
@@ -334,7 +334,7 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     if(def.custom){def.tick.call(def,r,dt);if(r.done)endSkill();return}
     const s=r.segs[r.i];t+=dt*s.spd;let f=t*30;const f1=s.f1;
     if(def.ev&&def.ev.length||r.ev){const evs=r.ev||def.ev;for(const ev of evs){if(ev.s!==r.i)continue;if(ev.f>r.lf&&ev.f<=f&&!r.evd.has(ev)){r.evd.add(ev);ev.fn()}}}
-    if(def.appr){const A=def.appr,Z=(TG.on?TG.z:1.7)-A.d;let z;if(f<A.r0){z=Z*ss(A.f0,A.f1,f);if(f>A.f0+.5&&f<A.f1&&(r.ag=(r.ag||0)-dt)<=0){r.ag=.03;ghostNow({life:.3,col:CY,a:.55})}}else{z=Z*(1-ss(A.r0,A.r1,f));if(!r.retd){r.retd=1;ghostNow({life:.32,col:VI,a:.6});burst([act.x,.5,act.z],14,3,.05,CY,.35,0);SFX.dash()}}act.z=z}
+    if(def.appr){const A=def.appr,Z=(TG.on?TG.z:r.bz+1.7)-A.d;let z;if(f<A.r0){z=r.bz+(Z-r.bz)*ss(A.f0,A.f1,f);if(f>A.f0+.5&&f<A.f1&&(r.ag=(r.ag||0)-dt)<=0){r.ag=.03;ghostNow({life:.3,col:CY,a:.55})}}else{z=r.bz+(Z-r.bz)*(1-ss(A.r0,A.r1,f));if(!r.retd){r.retd=1;ghostNow({life:.32,col:VI,a:.6});burst([act.x,.5,act.z],14,3,.05,CY,.35,0);SFX.dash()}}act.z=z}
     r.lf=f;def.tick&&def.tick.call(def,r,dt,f);
     if(f>=f1){if(r.i+1<r.segs.length)beginSeg(r.i+1);else endSkill()}}
   // alvo: fisica simples
@@ -344,10 +344,10 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     if(TG.fade>0){TG.vis=Math.min(1,TG.vis+dt*1.2);if(TG.vis>=1)TG.fade=0}}
   // camera: segue o ator
   const foc={x:0,y:.5,z:0};
-  function camStep(dt){const ult=run&&run.id==='ult',mid=run&&TG.on&&!ult;const tx=ult?TG.x:(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*.7:(mid?(act.z+TG.z)*.5:act.z);
+  function camStep(dt,dts){dts=dts==null?dt:dts;const ult=run&&run.id==='ult',mid=run&&TG.on&&!ult;const tx=ult?TG.x:(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*.7:(mid?(act.z+TG.z)*.5:act.z);
     const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1);if(ult){const e=run.el||0;ty+=.2;if(e>2.7&&!run.imp)ty=lerp(.9,1.9,ss(2.7,3.0,e))-ss(3.1,3.38,e)*.9;}
     const k=clp(dt*7,0,1);foc.x+=(tx-foc.x)*k;foc.z+=(tz-foc.z)*k;foc.y+=(ty-foc.y)*k;
-    CAMF.zoom+=(CAMF.zt-CAMF.zoom)*clp(dt*6,0,1);CAMF.shake*=Math.pow(.003,dt);CAMF.flash*=Math.pow(.004,dt);CAMF.roll*=Math.pow(.05,dt);
+    CAMF.zoom+=(CAMF.zt-CAMF.zoom)*clp(dt*6,0,1);CAMF.shake*=Math.pow(.003,dts);CAMF.flash*=Math.pow(.004,dts);CAMF.roll*=Math.pow(.05,dts);
     dimEl.style.opacity=String(clp(CAMF.dim,0,1));const fl=$e('flash');if(fl){fl.style.opacity=String(clp(CAMF.flash,0,1));fl.style.background=CAMF.flashC}}
   function partStep(dt){for(let i=PT.length-1;i>=0;i--){const p=PT[i];p.life-=dt;if(p.life<=0){PT.splice(i,1);continue}p.v[1]+=p.g*dt;const d=Math.exp(-p.drag*dt);p.v[0]*=d;p.v[1]*=d;p.v[2]*=d;p.p[0]+=p.v[0]*dt;p.p[1]+=p.v[1]*dt;p.p[2]+=p.v[2]*dt;if(p.p[1]<0){p.p[1]=0;p.v[1]*=-.3}}
     for(let i=GH.length-1;i>=0;i--){const g=GH[i];g.age+=dt;if(g.age>=g.life){gUse[g.tex]=null;GH.splice(i,1)}}}
@@ -362,7 +362,7 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     const eye=[tx+Math.sin(cam.yaw)*cp*DD,ty+Math.sin(cam.pitch)*DD,tz+Math.cos(cam.yaw)*cp*DD];
     const V=M4.look(eye,[tx,ty,tz],[Math.sin(CAMF.roll),Math.cos(CAMF.roll),0]),VP=M4.mul(new Float32Array(16),P,V);VPm=VP;camE=eye;camR=[V[0],V[4],V[8]];camU=[V[1],V[5],V[9]];
     gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.x+W[PEL*16+12],act.z+W[PEL*16+14]);gl.uniform1f(U(PG,'uGrid'),1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
+    gl.useProgram(PG);gl.uniformMatrix4fv(U(PG,'uVP'),false,VP);gl.uniform2f(U(PG,'uSh'),act.x+W[PEL*16+12],act.z+W[PEL*16+14]);gl.uniform2f(U(PG,'uOff'),foc.x,foc.z);gl.uniform1f(U(PG,'uGrid'),1-.35*dimK);gl.bindVertexArray(gv);gl.drawArrays(gl.TRIANGLES,0,6);gl.disable(gl.BLEND);
     buildAct(actM,act.x,act.y,act.z,act.yaw);
     if(act.vis){
     for(let i=0;i<8;i++){const k=capIdx[i];capBuf[i*3]=W[k*16+12];capBuf[i*3+1]=W[k*16+13];capBuf[i*3+2]=W[k*16+14]}
@@ -389,23 +389,105 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     const nq=buildRibbons(lastDt);if(nq>0){gl.useProgram(PRB);gl.uniformMatrix4fv(U(PRB,'uVP'),false,VP);gl.bindVertexArray(rbVao);gl.bindBuffer(gl.ARRAY_BUFFER,rbBuf);gl.bufferSubData(gl.ARRAY_BUFFER,0,RBUF,0,rn);gl.drawArrays(gl.TRIANGLES,0,nq)}
     if(PT.length){let n=0;for(const p of PT){const u=p.life/p.max;PBUF[n++]=p.p[0];PBUF[n++]=p.p[1];PBUF[n++]=p.p[2];PBUF[n++]=p.size*(.5+.5*u);PBUF[n++]=p.col[0];PBUF[n++]=p.col[1];PBUF[n++]=p.col[2];PBUF[n++]=p.a*u}
       gl.useProgram(PP);gl.uniformMatrix4fv(U(PP,'uVP'),false,VP);gl.uniform1f(U(PP,'uPx'),cv.height*1.95);gl.bindVertexArray(ppVao);gl.bindBuffer(gl.ARRAY_BUFFER,ppBuf);gl.bufferSubData(gl.ARRAY_BUFFER,0,PBUF,0,n);gl.drawArrays(gl.POINTS,0,n/8)}
+    auDraw(VP);
     gl.depthMask(true);gl.disable(gl.BLEND);gl.bindVertexArray(null)}
   let last=performance.now(),lastDt=0;
   let frozen=false;
   function frame(now){const dt0=Math.min((now-last)/1000,.1);last=now;if(frozen)return;tick(dt0)}
   function tick(dt0,nodraw){
     // escala de tempo (camera lenta com retorno suave)
-    if(ts.hold>0){ts.hold-=dt0}else ts.target=1;ts.v+=(ts.target-ts.v)*clp(dt0*(ts.target<ts.v?30:7),0,1);const dt=dt0*ts.v;lastDt=dt;
+    if(ts.hold>0){ts.hold-=dt0}else ts.target=1;ts.v+=(ts.target-ts.v)*clp(dt0*(ts.target<ts.v?30:7),0,1);const dtS=dt0*ts.v,dt=dtS*speed;lastDt=dt;        // dt: tempo de simulacao (camera lenta E controle de velocidade)
     const c=clips[cur],dur=cdur(c);
-    if(run){skillStep(dt);if(!run||!run.def.custom||true){}}
-    else if(playing){t+=dt*speed;if(t>=dur){if(loop)t%=dur;else t=dur}}
+    if(run){skillStep(dt)}
+    else if(playing){t+=dtS*speed;if(t>=dur){if(loop)t%=dur;else t=dur}}
     if(blend<1)blend=Math.min(1,blend+dt/blendDur);
     if(spin)cam.yaw+=dt0*.6;
-    updatePose();bladeUpdate(dt);targetStep(dt);partStep(dt);camStep(dt0);if(!nodraw)draw()}
+    updatePose();bladeUpdate(dt);targetStep(dt);partStep(dt);auraUpdate(dt);camStep(dt0,dt);if(!nodraw)draw()}
   const CATS=man.cats.filter(c=>clips.some(x=>x.cat===c));
+  // ---------------------------------------------------------------------------------------------------
+  // AURAS MAGICAS NAS LAMINAS  (texturas Hovl Studio: fumaca em flipbook 8x8, brilho, flare, ponto e cristais)
+  //   lamina direita (indice 1) = FOGO   |   lamina esquerda (indice 0) = GELO
+  const FIRE_C=[1,.42,.08],ICE_C=[.45,.86,1],AUC=[ICE_C,FIRE_C];
+  let showAura=true;const auraOn=()=>showAura&&showW&&act.vis;
+  const AU=[];let auT=0,auN=[0,0,0,0];
+  const VS_AU=`#version 300 es
+precision highp float;layout(location=0) in vec3 aP;layout(location=1) in vec2 aT;layout(location=2) in vec4 aC;layout(location=3) in vec2 aK;uniform mat4 uVP;out vec2 vT;out vec4 vC;out vec2 vK;
+void main(){vT=aT;vC=aC;vK=aK;gl_Position=uVP*vec4(aP,1.);}`;
+  const FS_AU=`#version 300 es
+precision highp float;in vec2 vT;in vec4 vC;in vec2 vK;uniform sampler2D uF,uG,uS;out vec4 o;
+vec2 cell(float f,vec2 t){float fi=floor(f);return (vec2(mod(fi,8.),floor(fi/8.))+clamp(t,.002,.998))/8.;}
+void main(){float k=vK.x;float L;vec3 col=vC.rgb;
+  if(k<.5){float f=min(vK.y,62.);float m=fract(f);L=mix(texture(uF,cell(f,vT)).r,texture(uF,cell(f+1.,vT)).r,m)*1.6;}
+  else if(k<1.5){L=texture(uG,vT).r;L=L*L*1.1;}
+  else if(k<2.5){L=texture(uG,vT).g;L*=1.3;}
+  else if(k<3.5){L=texture(uG,vT).b;L*=1.2;}
+  else{vec4 s=texture(uS,(vec2(mod(vK.y,4.),floor(vK.y/4.))+clamp(vT,.01,.99))/4.);L=dot(s.rgb,vec3(.35,.5,.15))*s.a*1.6;}
+  float e=smoothstep(0.,.12,min(min(vT.x,vT.y),min(1.-vT.x,1.-vT.y)));
+  o=vec4(col*L*vC.a*e,1.);}`;
+  const PAU=prg(VS_AU,FS_AU);
+  const AUMAX=1100,AUBUF=new Float32Array(AUMAX*6*11),auVao=gl.createVertexArray(),auBuf=gl.createBuffer();
+  gl.bindVertexArray(auVao);gl.bindBuffer(gl.ARRAY_BUFFER,auBuf);gl.bufferData(gl.ARRAY_BUFFER,AUBUF.byteLength,gl.DYNAMIC_DRAW);
+  [[0,3,0],[1,2,12],[2,4,20],[3,2,36]].forEach(([l,n,o])=>{gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,n,gl.FLOAT,false,44,o)});gl.bindVertexArray(null);
+  let auTex=[null,null,null];
+  async function auTexLoad(k,i){try{const bm=await createImageBitmap(new Blob([SH.bin('aura.'+k)],{type:'image/png'}));
+      const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.NONE);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bm);if(bm.close)bm.close();
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);auTex[i]=t}catch(e){console.warn('aura tex',k,e)}}
+  await Promise.all([auTexLoad('flip',0),auTexLoad('glow',1),auTexLoad('shards',2)]);
+  // intensidade: sobe com a velocidade da lamina e durante as skills
+  const auInt=(i)=>{const b=BL[i];let k=1+clp(b.sp/30,0,1)*.7;if(run)k+=run.id==='ult'?.7:.3;return k};
+  function auSpawn(i,kind,n){const b=BL[i];if(!b.pt)return;const fire=i===1;
+    for(let q=0;q<n&&AU.length<AUMAX-2;q++){const s=Math.random(),a=lerp(.0,1,s);const an=vadd(vmul(b.base,1-s),vmul(b.tip,s));
+      const bv=vmul(b.v,.07);const ang=Math.random()*6.283;const side=[Math.cos(ang),0,Math.sin(ang)];
+      const P={k:kind,i,s,an,q:vadd(an,vmul(side,.012)),v:[0,0,0],age:0,life:.5,s0:.2,s1:.4,rot:rnd(0,6.28),rv:rnd(-1.5,1.5),f0:0,fps:60,a:1,w:1,fire};
+      if(kind===0){ // chama / nevoa
+        P.life=fire?rnd(.3,.5):rnd(.5,.8);P.s0=fire?rnd(.09,.14):rnd(.1,.15);P.s1=fire?rnd(.19,.28):rnd(.25,.36);P.f0=Math.floor(rnd(0,3))*8+Math.floor(rnd(0,2));P.fps=fire?58:40;P.w=.8;
+        P.v=fire?[bv[0]+rnd(-.2,.2),rnd(.7,1.5),bv[2]+rnd(-.2,.2)]:[bv[0]+rnd(-.25,.25),rnd(-.5,.15),bv[2]+rnd(-.25,.25)];P.a=fire?.62:.5}
+      else if(kind===3){ // brasas (fogo)
+        P.life=rnd(.5,1.1);P.s0=rnd(.022,.04);P.s1=.006;P.v=[bv[0]+rnd(-.5,.5),rnd(.5,1.5),bv[2]+rnd(-.5,.5)];P.a=1.4;P.w=.2}
+      else if(kind===2){ // faiscas de gelo (flare)
+        P.life=rnd(.35,.7);P.s0=rnd(.05,.1);P.s1=.01;P.v=[bv[0]+rnd(-.3,.3),rnd(-.2,.5),bv[2]+rnd(-.3,.3)];P.a=1.2;P.rv=rnd(-3,3);P.w=.3}
+      else if(kind===4){ // cristais de gelo
+        P.life=rnd(.5,.9);P.s0=rnd(.028,.05);P.s1=P.s0*.4;P.f0=Math.floor(rnd(0,16));P.v=[bv[0]+rnd(-.45,.45),rnd(-.1,.6),bv[2]+rnd(-.45,.45)];P.a=1.1;P.rv=rnd(-4,4);P.w=.3}
+      AU.push(P)}}
+  function auraUpdate(dt){for(let i=AU.length-1;i>=0;i--){const p=AU[i];p.age+=dt;if(p.age>=p.life){AU.splice(i,1);continue}
+      const u=p.age/p.life;if(p.k===4){p.v[1]-=1.2*dt}else if(p.k===3){p.v[1]+=.5*dt}
+      const d=Math.exp(-1.3*dt);p.v[0]*=d;p.v[2]*=d;p.q[0]+=p.v[0]*dt;p.q[1]+=p.v[1]*dt;p.q[2]+=p.v[2]*dt;p.rot+=p.rv*dt}
+    if(!(dt>0)||!auraOn()){return}
+    for(let i=0;i<2;i++){const b=BL[i];if(!b.pt)continue;const I=auInt(i);const fire=i===1;
+      auN[0]+=dt*(fire?68:52)*I;auN[1]+=dt*(fire?38:18)*I;auN[2]+=dt*(fire?0:30)*I;
+      const nW=Math.floor(auN[0]);auN[0]-=nW;auSpawn(i,0,Math.min(nW,6));
+      const nE=Math.floor(auN[1]);auN[1]-=nE;auSpawn(i,fire?3:2,Math.min(nE,5));
+      if(!fire){const nC=Math.floor(auN[2]/6);if(nC>0){auN[2]-=nC*6;auSpawn(i,4,Math.min(nC,3))}}}}
+  function auPush(n,p,sz,rot,col,a,kind,fr){const cr=Math.cos(rot)*sz,sr=Math.sin(rot)*sz;
+    // cantos: (0,0)=topo-esq (em cima = +camU)
+    const R=[camR[0]*cr+camU[0]*sr,camR[1]*cr+camU[1]*sr,camR[2]*cr+camU[2]*sr],Uu=[camU[0]*cr-camR[0]*sr,camU[1]*cr-camR[1]*sr,camU[2]*cr-camR[2]*sr];
+    const cn=[[-1,1,0,0],[1,1,1,0],[-1,-1,0,1],[1,1,1,0],[1,-1,1,1],[-1,-1,0,1]];
+    for(const c of cn){AUBUF[n++]=p[0]+R[0]*c[0]+Uu[0]*c[1];AUBUF[n++]=p[1]+R[1]*c[0]+Uu[1]*c[1];AUBUF[n++]=p[2]+R[2]*c[0]+Uu[2]*c[1];AUBUF[n++]=c[2];AUBUF[n++]=c[3];AUBUF[n++]=col[0];AUBUF[n++]=col[1];AUBUF[n++]=col[2];AUBUF[n++]=a;AUBUF[n++]=kind;AUBUF[n++]=fr}
+    return n}
+  const FIRE_G=[[1,.95,.6],[1,.55,.12],[.75,.12,.02]],ICE_G=[[.95,1,1],[.5,.88,1],[.2,.45,.95]];
+  function auGrad(g,u){return u<.5?vmix(g[0],g[1],u*2):vmix(g[1],g[2],(u-.5)*2)}
+  function auBuild(){let n=0;const now=performance.now()/1000;
+    // brilho fixo das laminas (halo + luz na ponta), pulsando
+    if(auraOn())for(let i=0;i<2;i++){const b=BL[i];if(!b.pt)continue;const fire=i===1,I=auInt(i),G=fire?FIRE_G:ICE_G,pu=.82+.18*Math.sin(now*(fire?19:9)+i*2);
+      const mid=vmix(b.base,b.tip,.5);n=auPush(n,mid,.2*pu*(.85+.15*I),0,G[1],.22*I,1,0);n=auPush(n,b.tip,.12*pu,0,G[0],.3*Math.min(I,1.6),1,0);
+      n=auPush(n,vmix(b.base,b.tip,.82),.1*pu,now*(fire?1:.6),G[0],.4*Math.min(I,1.6),2,0)}
+    for(const p of AU){if(n>=AUBUF.length-66)break;const b=BL[p.i];const u=p.age/p.life,G=p.fire?FIRE_G:ICE_G;
+      const an=vadd(vmul(b.base,1-p.s),vmul(b.tip,p.s));const fw=Math.max(0,1-u*p.w*2.2);const pos=vadd(p.q,vmul(vsub(an,p.an),fw));
+      const fin=Math.min(1,p.age/.06),fo=Math.pow(1-u,p.k===0?1.2:1.6);let col,a=p.a*fin*fo,sz=lerp(p.s0,p.s1,Math.sqrt(u)),fr=0;
+      if(p.k===0){col=auGrad(G,u);fr=p.f0+p.age*p.fps;a*=1.0}
+      else if(p.k===3){col=auGrad(G,u*.6);sz=p.s0*(1-u)+.012}
+      else if(p.k===2){col=G[0];a*=.6+.4*Math.sin(p.age*40)}
+      else{col=vmix(G[0],G[1],.4);fr=p.f0}
+      n=auPush(n,pos,sz,p.rot,col,a,p.k===3?3:(p.k===4?4:p.k),fr)}
+    return n/11}
+  function auDraw(VP){const nv=auBuild();if(nv<=0||!auTex[0])return;
+    gl.useProgram(PAU);gl.uniformMatrix4fv(U(PAU,'uVP'),false,VP);
+    for(let i=0;i<3;i++){gl.activeTexture(gl.TEXTURE2+i);gl.bindTexture(gl.TEXTURE_2D,auTex[i])}gl.uniform1i(U(PAU,'uF'),2);gl.uniform1i(U(PAU,'uG'),3);gl.uniform1i(U(PAU,'uS'),4);
+    gl.bindVertexArray(auVao);gl.bindBuffer(gl.ARRAY_BUFFER,auBuf);gl.bufferSubData(gl.ARRAY_BUFFER,0,AUBUF,0,nv*11);gl.drawArrays(gl.TRIANGLES,0,nv);gl.activeTexture(gl.TEXTURE0)}
   const KIT=[
     {id:'basic',nome:'Corte Relâmpago',tag:'Básico',cd:0,custo:0,icon:'i-m-basic',desc:'Cadeia de 4 cortes cruzados em velocidade absurda. Cada toque é o próximo golpe; o quarto fecha em X, com explosão de energia e câmera lenta no impacto.'},
-    {id:'s1',nome:'Investida Fantasma',tag:'Skill 1',cd:5,custo:25,icon:'i-m-dash',desc:'Some num piscar e atravessa o alvo com as duas lâminas abertas, deixando imagens residuais pelo caminho. O corte cruza o inimigo e ele volta ao ponto de partida antes de o corte terminar.'},
+    {id:'s1',nome:'Investida Fantasma',tag:'Skill 1',cd:5,custo:25,icon:'i-m-dash',desc:'Some num piscar e atravessa o alvo com as duas lâminas abertas, deixando imagens residuais pelo caminho. O corte cruza o inimigo e ele termina onde o dash acabou: o personagem não volta ao ponto de partida (use Recentralizar em Ajustes).'},
     {id:'s2',nome:'Tempestade de Aço',tag:'Skill 2',cd:8,custo:40,icon:'i-m-storm',desc:'Rajada de mais de 30 cortes em menos de um segundo, vindos de todos os lados, com cópias residuais tremendo ao redor. Fecha com um X devastador.'},
     {id:'s3',nome:'Ceifa Ascendente',tag:'Skill 3',cd:10,custo:45,icon:'i-m-rise',desc:'Corte em lua crescente que lança o alvo ao céu. Ele o persegue no ar com três cortes, o lança de novo e o crava no chão com onda de choque e rachaduras.'},
     {id:'s4',nome:'Espiral Celeste',tag:'Skill 4',cd:12,custo:55,icon:'i-m-spiral',desc:'Salta e gira como um ciclone de lâminas, puxando o alvo para o redemoinho. Termina num mergulho que racha o chão, com anéis de choque e raios de luz caindo do alto.'},
@@ -414,13 +496,15 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     clips:clips.map(c=>({name:c.name,cat:c.cat,dur:cdur(c),nf:c.nf})),cats:CATS,kit:KIT,
     frame,state:()=>({cur,t,dur:cdur(clips[cur]),playing,loop,speed,skill:run?run.id:null}),
     useSkill,tick,freeze:v=>{frozen=v},
-    setClip(i){if(run){const o=run;run=null;o.def.end&&o.def.end(o);act.x=act.y=act.z=0;act.vis=true}setClip(i);playing=true},seek(f){if(run){const o=run;run=null;o.def.end&&o.def.end(o);act.x=act.y=act.z=0;act.vis=true}t=f*cdur(clips[cur]);playing=false},
+    setClip(i){if(run){const o=run;run=null;o.def.end&&o.def.end(o);act.x=BASE.x;act.y=0;act.z=BASE.z;act.vis=true}setClip(i);playing=true},seek(f){if(run){const o=run;run=null;o.def.end&&o.def.end(o);act.x=BASE.x;act.y=0;act.z=BASE.z;act.vis=true}t=f*cdur(clips[cur]);playing=false},
     setPlaying(b){if(b&&!loop&&t>=cdur(clips[cur])-1e-3)t=0;playing=b},setLoop(b){loop=b},setSpeed(x){speed=x},
     toggles:[
       {id:'w',label:'Armas',sub:'Mostrar as duas lâminas',icon:'i-swords',get:()=>showW,set:v=>{showW=v}},
+      {id:'aura',label:'Auras mágicas',sub:'Fogo na lâmina direita e gelo na esquerda',icon:'i-swords',get:()=>showAura,set:v=>{showAura=v}},
       {id:'tg',label:'Alvo de treino',sub:'Boneco para receber os golpes das skills',icon:'i-target',get:()=>TG.on,set:v=>{TG.on=v}},
       {id:'spin',label:'Girar câmera',sub:'Órbita automática em volta do personagem',icon:'i-rotate',get:()=>spin,set:v=>{spin=v}},
       {id:'tp',label:'Pose de repouso',sub:'Mostra o modelo parado, sem animação',icon:'i-person',get:()=>restMode,set:v=>{restMode=v}}],
-    actions:[],
-    dispose(){playing=false;prev=null;run=null;dimEl.remove();dmgEls.forEach(e=>e.remove());const fl=$e('flash');if(fl)fl.style.opacity='0';const b=$e('ban');if(b)b.className=''}};
+    actions:[{label:'Recentralizar personagem',icon:'i-rotate',wide:true,run(){if(run){const o=run;run=null;o.def.end&&o.def.end(o)}BASE.x=BASE.z=0;act.x=act.z=0;act.y=0;foc.x=foc.z=0;TG.x=0;TG.z=1.7}}],
+    pos:()=>({x:act.x,z:act.z,bx:BASE.x,bz:BASE.z,tx:TG.x,tz:TG.z}),
+    dispose(){playing=false;prev=null;run=null;AU.length=0;dimEl.remove();dmgEls.forEach(e=>e.remove());const fl=$e('flash');if(fl)fl.style.opacity='0';const b=$e('ban');if(b)b.className=''}};
   return API}
