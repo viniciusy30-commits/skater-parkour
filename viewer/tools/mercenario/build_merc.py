@@ -97,13 +97,14 @@ print('clips', len(clips))
 pickle.dump(clips, open(WORK + '/merc_clips.pkl', 'wb'))
 
 # ------------------------------------------------------------------ meshes
-def quant_mesh(P, N, UV, tri, J=None, W=None, RW=None):
+def quant_mesh(P, N, UV, tri, J=None, W=None, RW=None, SG=None):
     mn = P.min(0); mx = P.max(0); ctr = (mn + mx) / 2; ext = np.maximum((mx - mn) / 2, 1e-6) * 1.0005
     st = 28 if J is not None else 20
     n = len(P); vb = np.zeros((n, st), np.uint8)
     pos = np.zeros((n, 4), '<i2'); pos[:, :3] = np.round((P - ctr) / ext * 32767)
     if RW is not None: pos[:, 3] = np.round(np.clip(RW / 0.12, 0, 1) * 32767)
     nr = np.zeros((n, 4), '<i2'); nn = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9); nr[:, :3] = np.round(nn * 32767)
+    if SG is not None: nr[:, 3] = np.round(SG * 32767)
     uv = np.clip(np.round(UV * 65535), 0, 65535).astype('<u2')
     vb[:, 0:8] = pos.view(np.uint8).reshape(n, 8); vb[:, 8:16] = nr.view(np.uint8).reshape(n, 8); vb[:, 16:20] = uv.view(np.uint8).reshape(n, 4)
     if J is not None:
@@ -122,8 +123,24 @@ def _segd(p, a, b):
     ab = b - a; t = np.clip(((p - a) @ ab) / (ab @ ab), 0, 1); return np.linalg.norm(p - (a + t[:, None] * ab), axis=1)
 _P = lambda n: tp['Wb'][T.ix[n]][:3, 3]
 _dd = np.minimum.reduce([_segd(tp['Q'], _P(a_), _P(b_)) for sd in 'lr' for a_, b_ in ((('thigh_' + sd), ('calf_' + sd)), (('calf_' + sd), ('foot_' + sd)), (('foot_' + sd), ('ball_' + sd)))])
-RW = np.where(tp['Q'][:, 1] < 0.6, np.minimum(_dd, 0.12), 0.0)
-char = quant_mesh(tp['Q'], tp['N'], tp['UV'], tp['idx'].reshape(-1, 3), tp['J'], tp['Wt'], RW)
+_r0 = np.minimum(_dd, 0.12)
+# suaviza a folga ao longo da malha (a barra do sobretudo e irregular; sem isso a colisao serrilha o tecido)
+import scipy.sparse as _sp
+_key = np.round(tp['Q'] * 1e5).astype(np.int64); _, _inv = np.unique(_key, axis=0, return_inverse=True); _inv = _inv.ravel(); _G = _inv.max() + 1
+_t3 = tp['idx'].reshape(-1, 3).astype(np.int64)
+_ea = np.r_[_inv[_t3[:, 0]], _inv[_t3[:, 1]], _inv[_t3[:, 2]]]; _eb = np.r_[_inv[_t3[:, 1]], _inv[_t3[:, 2]], _inv[_t3[:, 0]]]
+_A = _sp.coo_matrix((np.ones(len(_ea)), (_ea, _eb)), shape=(_G, _G)).tocsr(); _A = ((_A + _A.T) > 0).astype(np.float64); _dg = np.maximum(np.asarray(_A.sum(1)).ravel(), 1)
+_cnt = np.bincount(_inv, minlength=_G); _rg = np.bincount(_inv, weights=_r0, minlength=_G) / np.maximum(_cnt, 1)
+for _ in range(10): _rg = 0.4 * _rg + 0.6 * (_A @ _rg) / _dg
+RW = np.where(tp['Q'][:, 1] < 0.6, _rg[_inv], 0.0)
+def _closest(p, a, b):
+    ab = b - a; t = np.clip(((p - a) @ ab) / (ab @ ab), 0, 1); return a + t[:, None] * ab
+_segs = [(_P(a_), _P(b_)) for sd in 'lr' for a_, b_ in ((('thigh_' + sd), ('calf_' + sd)), (('calf_' + sd), ('foot_' + sd)), (('foot_' + sd), ('ball_' + sd)))]
+_cq = np.stack([_closest(tp['Q'], a_, b_) for a_, b_ in _segs]); _di = np.linalg.norm(tp['Q'][None] - _cq, axis=2).argmin(0)
+_q = _cq[_di, np.arange(len(tp['Q']))]
+_nn = tp['N'] / np.maximum(np.linalg.norm(tp['N'], axis=1, keepdims=True), 1e-9)
+SG = np.where(((_nn * (tp['Q'] - _q)).sum(1)) >= 0, 1.0, -1.0)
+char = quant_mesh(tp['Q'], tp['N'], tp['UV'], tp['idx'].reshape(-1, 3), tp['J'], tp['Wt'], RW, SG)
 blades = {s: quant_mesh(*(lambda B: (B['P'], B['N'], B['UV'], B['tri']))(blade_local(raw, k)))
           for s, k in (('l', 0), ('r', 1))}
 char_tex = tp['tex']

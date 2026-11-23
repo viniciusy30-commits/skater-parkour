@@ -54,21 +54,32 @@ def hand_normal(P, ix, s):
 ARM = ['clavicle', 'upperarm', 'lowerarm', 'hand']
 FING = ['index', 'middle', 'ring', 'pinky']
 
-def anat_frames(P, ix, chest):
-    """Retorna dict osso->3x3 (frame anatomico) para os ossos nao-folha comuns aos dois esqueletos."""
+def secondaries(P, ix):
+    """Vetores secundarios (definem a torcao) de coxa/canela/braco/antebraco no repouso: frente do pe e normal da palma."""
+    g = lambda k: P[ix[k]]; out = {}
+    for s in 'lr':
+        fw = g('ball_' + s) - g('foot_' + s); n = hand_normal(P, ix, s)
+        for b in ('thigh_', 'calf_'): out[b + s] = fw
+        for b in ('upperarm_', 'lowerarm_'): out[b + s] = n
+    out['pelvis'] = unit(g('thigh_l') - g('thigh_r')); out['neck_01'] = unit(g('clavicle_l') - g('clavicle_r'))
+    return out
+
+def anat_frames(P, ix, chest, sec=None):
+    """Retorna dict osso->3x3 (frame anatomico). sec: torcao vinda do osso real da animacao (continua, sem inversoes)."""
     g = lambda k: P[ix[k]]
+    sc = lambda b, d: d if sec is None else sec[b]
     F = {}
     up = unit(g('neck_01') - g('pelvis'))
     lr = unit(g('thigh_l') - g('thigh_r'))
-    F['pelvis'] = frame(up, lr)
+    F['pelvis'] = frame(up, sc('pelvis', lr))
     cl = unit(g('clavicle_l') - g('clavicle_r'))
     F['chest'] = frame(g('neck_01') - g(chest), cl)
-    F['neck_01'] = frame(g('head') - g('neck_01'), cl)
+    F['neck_01'] = frame(g('head') - g('neck_01'), sc('neck_01', cl))
     for s in 'lr':
         n = hand_normal(P, ix, s)
         F['clavicle_' + s] = frame(g('upperarm_' + s) - g('clavicle_' + s), up)
-        F['upperarm_' + s] = frame(g('lowerarm_' + s) - g('upperarm_' + s), n)
-        F['lowerarm_' + s] = frame(g('hand_' + s) - g('lowerarm_' + s), n)
+        F['upperarm_' + s] = frame(g('lowerarm_' + s) - g('upperarm_' + s), sc('upperarm_' + s, n))
+        F['lowerarm_' + s] = frame(g('hand_' + s) - g('lowerarm_' + s), sc('lowerarm_' + s, n))
         F['hand_' + s] = frame(g('middle_01_' + s) - g('hand_' + s), n)
         for fg in FING:
             F[fg + '_01_' + s] = frame(g(fg + '_02_' + s) - g(fg + '_01_' + s), n)
@@ -76,8 +87,8 @@ def anat_frames(P, ix, chest):
         F['thumb_01_' + s] = frame(g('thumb_02_' + s) - g('thumb_01_' + s), n)
         F['thumb_02_' + s] = frame(g('thumb_03_' + s) - g('thumb_02_' + s), n)
         fw = g('ball_' + s) - g('foot_' + s)
-        F['thigh_' + s] = frame(g('calf_' + s) - g('thigh_' + s), fw)
-        F['calf_' + s] = frame(g('foot_' + s) - g('calf_' + s), fw)
+        F['thigh_' + s] = frame(g('calf_' + s) - g('thigh_' + s), sc('thigh_' + s, fw))
+        F['calf_' + s] = frame(g('foot_' + s) - g('calf_' + s), sc('calf_' + s, fw))
         F['foot_' + s] = frame(fw, g('foot_' + s) - g('calf_' + s))
     return F
 
@@ -147,10 +158,14 @@ def retarget_clip(S, T, anim, sFr):
     rootR = T.restWR[0]; rootP = T.restWP[0]
     scale = T.leg / (S.restWP[S.ix['pelvis'], 1] - S.restWP[S.ix['foot_l'], 1])
     Fs_rest = sFr
+    SEC_REST = secondaries(S.restWP, S.ix)
     prevR = {}
     for f in range(nf):
         WRs, WPs = S.pose(anim, f)
-        Fs = anat_frames(WPs, S.ix, 'spine_03')
+        sec_s = {b: WRs[S.ix[b]] @ (S.restWR[S.ix[b]].T @ SEC_REST[b]) for b in SEC_REST}
+        Fs = anat_frames(WPs, S.ix, 'spine_03', sec_s)
+        Fs['pelvis'] = WRs[S.ix['pelvis']] @ (S.restWR[S.ix['pelvis']].T @ Fs_rest['pelvis'])   # quadril rigido com o osso (nao acompanha a inclinacao do tronco)
+        for sd in 'lr': Fs['foot_' + sd] = WRs[S.ix['foot_' + sd]] @ (S.restWR[S.ix['foot_' + sd]].T @ Fs_rest['foot_' + sd])   # pe rigido com o osso (ignora a flexao dos dedos)
         Wt = {}
         for k in DIRECT: Wt[k] = Fs[k] @ T.O[k]
         for k in SPINE_T: Wt[k] = slerp_R(Fs['pelvis'], Fs['chest'], T.u[k]) @ T.O[k]
@@ -167,14 +182,16 @@ def retarget_clip(S, T, anim, sFr):
         lim = lambda v, a, b: a * np.tanh(v / a) if v >= 0 else b * np.tanh(v / b)
         Dev2 = fromvec(np.array([lim(rv[0], np.radians(52), np.radians(52)), lim(rv[1], np.radians(30), np.radians(30)), lim(rv[2], np.radians(14), np.radians(14))]))
         Wh = Wc @ (T.A2.T @ Dev2 @ T.A2) @ Wc.T @ Wn
+        cup = (Wc @ T.A2.T)[1, 0]                    # quanto o peito esta em pe (1 = em pe, <0 = de cabeca para baixo)
+        kup = float(np.clip((cup - 0.15) / 0.5, 0, 1)); kup = kup * kup * (3 - 2 * kup)
         Ah = Wh @ T.O['head'].T                    # frame anatomico da cabeca no mundo: col0=cima, col1=esquerda, col2=tras
         for _ in range(2):
             fwd = -Ah[:, 2]; left = Ah[:, 1]
             pit = np.arcsin(np.clip(fwd[1], -1, 1)); tp_ = lim(pit, np.radians(16), np.radians(16))
-            if abs(pit - tp_) > 1e-6: R = fromaxis(left, pit - tp_); Ah = R @ Ah        # + = cabeca para baixo
+            if abs(pit - tp_) > 1e-6: R = fromaxis(left, (pit - tp_) * kup); Ah = R @ Ah        # + = cabeca para baixo
             fwd = -Ah[:, 2]; left = Ah[:, 1]
             rol = np.arcsin(np.clip(left[1], -1, 1)); tr_ = lim(rol, np.radians(7), np.radians(7))
-            if abs(rol - tr_) > 1e-6: R = fromaxis(fwd, -(rol - tr_)); Ah = R @ Ah
+            if abs(rol - tr_) > 1e-6: R = fromaxis(fwd, -(rol - tr_) * kup); Ah = R @ Ah
         Wt['head'] = Ah @ T.O['head']
         # rotacoes locais (ossos nao dirigidos seguem o pai com o repouso local)
         WR = [None] * len(T.names)
