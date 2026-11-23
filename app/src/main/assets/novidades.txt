@@ -1,3 +1,8 @@
+#id 2026-11-23-b
+#titulo Correção: jogo fechando ao acertar o boneco
+- Corrigido o fechamento do jogo quando o ataque básico ou a Skill 4 acertavam o boneco (as gotas de sangue respingando no chão)
+- Se algum outro erro acontecer, o jogo não fecha mais: mostra uma linha pequena em vermelho embaixo da tela (mande print)
+
 #id 2026-11-22-b
 #titulo Guerreiro nativo: campo de treino
 - O jogo agora é só do Guerreiro, tudo nativo (sem página HTML dentro do app). Parkour e os outros personagens foram removidos

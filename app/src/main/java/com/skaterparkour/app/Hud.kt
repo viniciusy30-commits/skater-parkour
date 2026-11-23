@@ -154,6 +154,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         drawTarget(c, g)
         drawTexts(c, g)
         drawJoy(c)
+        r.lastErr?.let { pText.textSize = d(9f); pText.color = 0xFFFF8080.toInt(); c.drawText(it.take(120), width / 2f, height - d(8f), pText) }
         for (b in btns) drawBtn(c, b, g)
         postInvalidateOnAnimation()
     }

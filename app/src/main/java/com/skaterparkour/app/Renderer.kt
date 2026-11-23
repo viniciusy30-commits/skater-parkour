@@ -13,6 +13,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
     @Volatile var game: Game? = null
     @Volatile var loadMsg = "Carregando…"
     @Volatile var error: String? = null
+    @Volatile var lastErr: String? = null
 
     private lateinit var rig: Rig
     private lateinit var anims: Anims
@@ -83,8 +84,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
         if (error != null) return
         val now = System.nanoTime()
         val dt = ((now - last) / 1e9f).coerceIn(0f, .1f); last = now
-        g.update(dt)
-        g.torchTick(arena.torches, dt)
+        try { g.update(dt); g.torchTick(arena.torches, dt) } catch (e: Exception) { Log.e("Game", "update", e); lastErr = e.toString() + " @ " + (e.stackTrace.firstOrNull()?.toString() ?: "") }
 
         Matrix.setLookAtM(view, 0, g.eye[0], g.eye[1], g.eye[2], g.look[0], g.look[1], g.look[2], 0f, 1f, 0f)
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
@@ -132,10 +132,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
 
         // boneco, efeitos, rastro, onda de choque, sangue (mesma ordem do HTML)
         bld.drawEnemy(vpU, eyeU)
-        fx.draw(vp, g.time)
-        trl.draw(vpU)
-        sw.draw(vpU)
-        bld.drawBlood(vpU, camR, camU, eyeU)
+        try { fx.draw(vp, g.time); trl.draw(vpU); sw.draw(vpU); bld.drawBlood(vpU, camR, camU, eyeU) } catch (e: Exception) { Log.e("Game", "draw", e); lastErr = e.toString() + " @ " + (e.stackTrace.firstOrNull()?.toString() ?: "") }
         glBindVertexArray(0)
     }
 }

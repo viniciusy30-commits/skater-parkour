@@ -29,6 +29,7 @@ class Bld(ctx: Context) {
     private class Drop(val type: Int, val p: V, var v: V, var age: Float, val life: Float, val w: Float, var len: Float, val sz: Float = 1f, var hang: Float = 0f, var sw: Float = 0f) { var dead = false }
     private class Decal(val x: Float, val z: Float, val r: Float, val sx: Float, val ang: Float, var age: Float, val seed: Float, val life: Float)
     private class Drip(val p: V, var t: Float, val dur: Float, var next: Float, val m: Float)
+    private val newDrops = ArrayList<Drop>()
     private val sprites = ArrayList<Sprite>(); private val drops = ArrayList<Drop>(); private val decals = ArrayList<Decal>(); private val drips = ArrayList<Drip>()
 
     init {
@@ -66,7 +67,7 @@ class Bld(ctx: Context) {
         if (vlen(v) > 2 && Math.random() < .5) decal(p[0] + v[0] * .03f, p[2] + v[2] * .03f, r * .35f, 1.8f, ang, .02f)
     }
     private fun splashCrown(x: Float, z: Float, n: Int, s: Float) {
-        for (i in 0 until n) { val a = rnd(0f, PIf * 2); val sp = rnd(.25f, .7f) * s; drops.add(Drop(0, v3(x, .006f, z), v3(cos(a) * sp, rnd(.5f, 1.1f) * s, sin(a) * sp), 0f, rnd(.2f, .4f), .004f, .02f)) }
+        for (i in 0 until n) { val a = rnd(0f, PIf * 2); val sp = rnd(.25f, .7f) * s; newDrops.add(Drop(0, v3(x, .006f, z), v3(cos(a) * sp, rnd(.5f, 1.1f) * s, sin(a) * sp), 0f, rnd(.2f, .4f), .004f, .02f)) }
     }
 
     fun upd(dt: Float) {
@@ -87,6 +88,7 @@ class Bld(ctx: Context) {
             if (d.p[1] <= .006f) { d.dead = true; if (d.type == 2) land(d.p, d.v, d.w) }
         }
         drops.removeAll { it.dead || it.age >= it.life + (if (it.type == 1) 9 else 0) }
+        if (newDrops.isNotEmpty()) { drops.addAll(newDrops); newDrops.clear() }
         for (s in drips) {
             s.t += dt; s.next -= dt
             if (s.t < s.dur && s.next <= 0) {
