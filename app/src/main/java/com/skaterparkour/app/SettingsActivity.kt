@@ -54,33 +54,6 @@ class SettingsActivity : AppCompatActivity() {
             bottomMargin = dp(18)
         })
 
-        col.addView(text("Personagem", 16f, Color.WHITE))
-        val nomes = arrayOf("Original", "Anime (novo)")
-        val botoes = ArrayList<Button>()
-        val linha = LinearLayout(this)
-        linha.orientation = LinearLayout.HORIZONTAL
-        fun pinta() {
-            val sel = prefs.getInt("char", 0)
-            for (i in botoes.indices) {
-                botoes[i].text = (if (i == sel) "✓ " else "") + nomes[i]
-                botoes[i].alpha = if (i == sel) 1f else 0.6f
-            }
-        }
-        for (i in nomes.indices) {
-            val b = Button(this)
-            b.setOnClickListener {
-                prefs.edit().putInt("char", i).apply()
-                Input.character = i
-                pinta()
-            }
-            botoes.add(b)
-            linha.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        }
-        pinta()
-        col.addView(linha, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = dp(18)
-        })
-
         val status = text("", 14f, Color.argb(220, 255, 200, 140))
         val btnUpdate = Button(this)
         btnUpdate.text = "Verificar atualização"

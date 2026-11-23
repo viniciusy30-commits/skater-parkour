@@ -2,74 +2,41 @@ package com.skaterparkour.app
 
 import android.content.Context
 import android.content.Intent
+import android.opengl.GLSurfaceView
 import android.os.Bundle
-import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import javax.microedition.khronos.egl.EGL10
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.egl.EGLDisplay
 
+/** Campo de treino do Guerreiro — tudo nativo (OpenGL ES 3). */
 class MainActivity : AppCompatActivity() {
-
-    private lateinit var glView: GameGLView
-
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+    private lateinit var glView: GLSurfaceView
+    private lateinit var audio: Audio
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        val root = FrameLayout(this)
-        glView = GameGLView(this)
-        root.addView(glView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-
-        val joystick = JoystickView(this)
-        root.addView(joystick, FrameLayout.LayoutParams(dp(170), dp(170), Gravity.BOTTOM or Gravity.START).apply {
-            leftMargin = dp(36); bottomMargin = dp(28)
-        })
-
-        val jump = IconButton(this, IconButton.JUMP)
-        root.addView(jump, FrameLayout.LayoutParams(dp(96), dp(96), Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(44); bottomMargin = dp(40)
-        })
-
-        val gear = IconButton(this, IconButton.GEAR)
-        gear.onClick = { startActivity(Intent(this, SettingsActivity::class.java)) }
-        root.addView(gear, FrameLayout.LayoutParams(dp(46), dp(46), Gravity.TOP or Gravity.END).apply {
-            rightMargin = dp(20); topMargin = dp(14)
-        })
-
-        val reset = IconButton(this, IconButton.RESET)
-        reset.onClick = { Input.reset = true }
-        root.addView(reset, FrameLayout.LayoutParams(dp(46), dp(46), Gravity.TOP or Gravity.END).apply {
-            rightMargin = dp(76); topMargin = dp(14)
-        })
-
-        // atalho para a Arena do Guerreiro
-        val arena = android.widget.TextView(this).apply {
-            text = "⚔ Arena"
-            setTextColor(0xFFF3DFB0.toInt())
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat(); setColor(0xAA1B1712.toInt()); setStroke(dp(1), 0x66FFD27A)
-            }
-            setOnClickListener { startActivity(Intent(this@MainActivity, GuerreiroActivity::class.java)) }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        audio = Audio(applicationContext)
+        val renderer = Renderer(applicationContext, audio)
+        glView = GLSurfaceView(this).apply {
+            setEGLContextClientVersion(3)
+            setEGLConfigChooser(Chooser())
+            setRenderer(renderer)
+            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+            preserveEGLContextOnPause = true
         }
-        root.addView(arena, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40), Gravity.TOP or Gravity.END).apply {
-            rightMargin = dp(132); topMargin = dp(17)
-        })
-
+        val root = FrameLayout(this)
+        root.addView(glView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(Hud(this, renderer) { startActivity(Intent(this, SettingsActivity::class.java)) },
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
-
-        // entrada suave
-        root.alpha = 0f
-        root.animate().alpha(1f).setDuration(600).start()
-
         Updater.autoCheck(this)
         Novidades.mostrarSeNovo(this)
     }
@@ -79,15 +46,18 @@ class MainActivity : AppCompatActivity() {
         glView.onResume()
         val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
         Input.sens = 0.4f + prefs.getInt("sens", 50) / 100f * 1.2f
-        Input.character = prefs.getInt("char", 0)
         hideBars()
     }
 
     override fun onPause() {
         super.onPause()
         glView.onPause()
-        Input.jx = 0f
-        Input.jy = 0f
+        Input.jx = 0f; Input.jy = 0f
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        audio.release()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -99,5 +69,21 @@ class MainActivity : AppCompatActivity() {
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         c.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    /** RGB888 + profundidade 24 + 4x MSAA quando disponível. */
+    private class Chooser : GLSurfaceView.EGLConfigChooser {
+        override fun chooseConfig(egl: EGL10, display: EGLDisplay): EGLConfig {
+            val tries = arrayOf(
+                intArrayOf(EGL10.EGL_RED_SIZE, 8, EGL10.EGL_GREEN_SIZE, 8, EGL10.EGL_BLUE_SIZE, 8, EGL10.EGL_DEPTH_SIZE, 24, EGL10.EGL_RENDERABLE_TYPE, 0x40, EGL10.EGL_SAMPLE_BUFFERS, 1, EGL10.EGL_SAMPLES, 4, EGL10.EGL_NONE),
+                intArrayOf(EGL10.EGL_RED_SIZE, 8, EGL10.EGL_GREEN_SIZE, 8, EGL10.EGL_BLUE_SIZE, 8, EGL10.EGL_DEPTH_SIZE, 24, EGL10.EGL_RENDERABLE_TYPE, 0x40, EGL10.EGL_NONE),
+                intArrayOf(EGL10.EGL_RED_SIZE, 8, EGL10.EGL_GREEN_SIZE, 8, EGL10.EGL_BLUE_SIZE, 8, EGL10.EGL_DEPTH_SIZE, 16, EGL10.EGL_RENDERABLE_TYPE, 0x40, EGL10.EGL_NONE)
+            )
+            for (a in tries) {
+                val n = IntArray(1); val cfg = arrayOfNulls<EGLConfig>(1)
+                if (egl.eglChooseConfig(display, a, cfg, 1, n) && n[0] > 0 && cfg[0] != null) return cfg[0]!!
+            }
+            throw IllegalStateException("Sem configuração EGL")
+        }
     }
 }

@@ -1,3 +1,15 @@
+#id 2026-11-22-b
+#titulo Guerreiro nativo: campo de treino
+- O jogo agora é só do Guerreiro, tudo nativo (sem página HTML dentro do app). Parkour e os outros personagens foram removidos
+- Campo de treino novo: chão de terra com anel de pedras, cerca de madeira, tochas acesas, montanhas e céu
+- Controle de andar corrigido: para cima anda para onde a câmera olha, direita vai para a direita
+- Câmera: arraste para girar e use dois dedos (pinça) para afastar até bem longe ou aproximar
+- Andar e correr misturam as animações conforme a força do joystick (sem trocas bruscas); com o alvo travado ele anda de lado em 8 direções
+- Ataque básico sem trancos: o Combo 04 segue contínuo entre os golpes; cada toque libera o próximo golpe (recarga de 1 s)
+- Barra de habilidades em arco com recarga circular, quadro do alvo no topo e números de dano; as falas não aparecem mais na tela
+- Skill 4: segure o botão, arraste para mirar (indicador no chão) e solte para arremessar o machado
+- Botões pequenos no topo: travar alvo e treino sem recarga
+
 #id 2026-11-22-a
 #titulo Arena do Guerreiro
 - Novo modo: Arena do Guerreiro, com o guerreiro de dois machados, todas as skills, efeitos, falas e sons
