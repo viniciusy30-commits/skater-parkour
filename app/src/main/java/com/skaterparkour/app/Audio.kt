@@ -41,15 +41,15 @@ class Audio(private val ctx: Context) {
     /** Toca um efeito. [delay] em segundos; [fadeAt]/[fadeLen] fazem o som sumir aos poucos. */
     fun sfx(k: String, g: Float = 1f, rate: Float = 1f, delay: Float = 0f, loopKey: String? = null, fadeAt: Float = -1f, fadeLen: Float = 1f) {
         val id = ids[k] ?: return
-        val run = Runnable {
+        val run = Runnable { try {
             val v = clampf(g * (if (voiceOn) 0.55f else 1f), 0f, 1f)
             val s = pool.play(id, v, v, 1, 0, clampf(rate, 0.5f, 2f))
             if (loopKey != null) loops[loopKey] = s
             if (fadeAt >= 0f) {
                 val steps = 10
-                for (i in 1..steps) main.postDelayed({ val vv = v * (1f - i / steps.toFloat()); pool.setVolume(s, vv, vv) }, ((fadeAt + fadeLen * i / steps) * 1000).toLong())
+                for (i in 1..steps) main.postDelayed({ try { val vv = v * (1f - i / steps.toFloat()); pool.setVolume(s, vv, vv) } catch (_: Throwable) {} }, ((fadeAt + fadeLen * i / steps) * 1000).toLong())
             }
-        }
+        } catch (_: Throwable) {} }
         if (delay > 0f) main.postDelayed(run, (delay * 1000).toLong()) else main.post(run)
     }
 
@@ -57,12 +57,12 @@ class Audio(private val ctx: Context) {
 
     /** Fala do personagem. */
     fun voice(k: String, dropIfBusy: Boolean = false) {
-        main.post {
+        main.post { try {
             if (dropIfBusy && (player != null || queue.isNotEmpty())) return@post
             if (queue.size >= 3) queue.removeFirst()
             queue.addLast(k)
             if (player == null) next()
-        }
+        } catch (_: Throwable) {} }
     }
 
     /** Grito do básico: "Hah!" e, a cada 2–3, "Cai!". */

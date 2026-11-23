@@ -138,7 +138,8 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
     }
 
     // ------------------------------------------------------------- desenho
-    override fun onDraw(c: Canvas) {
+    override fun onDraw(c: Canvas) { try { draw0(c) } catch (_: Throwable) { postInvalidateOnAnimation() } }
+    private fun draw0(c: Canvas) {
         layout()
         val g = r.game
         val err = r.error
