@@ -97,11 +97,12 @@ print('clips', len(clips))
 pickle.dump(clips, open(WORK + '/merc_clips.pkl', 'wb'))
 
 # ------------------------------------------------------------------ meshes
-def quant_mesh(P, N, UV, tri, J=None, W=None):
+def quant_mesh(P, N, UV, tri, J=None, W=None, RW=None):
     mn = P.min(0); mx = P.max(0); ctr = (mn + mx) / 2; ext = np.maximum((mx - mn) / 2, 1e-6) * 1.0005
     st = 28 if J is not None else 20
     n = len(P); vb = np.zeros((n, st), np.uint8)
     pos = np.zeros((n, 4), '<i2'); pos[:, :3] = np.round((P - ctr) / ext * 32767)
+    if RW is not None: pos[:, 3] = np.round(np.clip(RW / 0.12, 0, 1) * 32767)
     nr = np.zeros((n, 4), '<i2'); nn = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9); nr[:, :3] = np.round(nn * 32767)
     uv = np.clip(np.round(UV * 65535), 0, 65535).astype('<u2')
     vb[:, 0:8] = pos.view(np.uint8).reshape(n, 8); vb[:, 8:16] = nr.view(np.uint8).reshape(n, 8); vb[:, 16:20] = uv.view(np.uint8).reshape(n, 4)
@@ -117,7 +118,12 @@ def jpeg_resize(b, size, q=88):
     if im.size[0] != size: im = im.resize((size, size), Image.LANCZOS)
     o = io.BytesIO(); im.save(o, 'JPEG', quality=q, optimize=True, progressive=False); return o.getvalue()
 
-char = quant_mesh(tp['Q'], tp['N'], tp['UV'], tp['idx'].reshape(-1, 3), tp['J'], tp['Wt'])
+def _segd(p, a, b):
+    ab = b - a; t = np.clip(((p - a) @ ab) / (ab @ ab), 0, 1); return np.linalg.norm(p - (a + t[:, None] * ab), axis=1)
+_P = lambda n: tp['Wb'][T.ix[n]][:3, 3]
+_dd = np.minimum.reduce([_segd(tp['Q'], _P(a_), _P(b_)) for sd in 'lr' for a_, b_ in ((('thigh_' + sd), ('calf_' + sd)), (('calf_' + sd), ('foot_' + sd)), (('foot_' + sd), ('ball_' + sd)))])
+RW = np.where(tp['Q'][:, 1] < 0.6, np.minimum(_dd, 0.12), 0.0)
+char = quant_mesh(tp['Q'], tp['N'], tp['UV'], tp['idx'].reshape(-1, 3), tp['J'], tp['Wt'], RW)
 blades = {s: quant_mesh(*(lambda B: (B['P'], B['N'], B['UV'], B['tri']))(blade_local(raw, k)))
           for s, k in (('l', 0), ('r', 1))}
 char_tex = tp['tex']
@@ -149,6 +155,7 @@ wt = put(blade_tex)
 for s in 'lr':
     b = blades[s]; w = dict(side=s, nv=b['nv'], ni=b['ni'], ctr=b['ctr'], ext=b['ext'], bone=att[s]['bone'], m=att[s]['m'])
     w['vb'] = put(b['vb']); w['ib'] = put(b['ib']); w['tex'] = wt; man['weapons'].append(w)
+man['cap'] = [[T.ix[n] for n in ('thigh_' + sd, 'calf_' + sd, 'foot_' + sd, 'ball_' + sd)] for sd in 'lr']
 man['cats'] = CATS
 man['clips'] = []
 for cl in clips:
