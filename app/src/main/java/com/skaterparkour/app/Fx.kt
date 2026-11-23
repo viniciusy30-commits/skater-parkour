@@ -24,6 +24,45 @@ class Fx(ctx: Context) {
         val RED = floatArrayOf(1f, .16f, .07f)
         val RED2 = floatArrayOf(1f, .38f, .16f)
         val DUST = floatArrayOf(.55f, .46f, .36f)
+
+    private val VS = """#version 300 es
+precision highp float;
+layout(location=0) in vec3 aP; layout(location=1) in vec2 aUV; layout(location=2) in vec4 aC; layout(location=3) in vec2 aM;
+uniform mat4 uVP; out vec2 vUV; out vec4 vC; out vec2 vM; out vec3 vW;
+void main(){ vUV=aUV; vC=aC; vM=aM; vW=aP; gl_Position=uVP*vec4(aP,1.); }"""
+
+    private val FS = """#version 300 es
+precision highp float;
+in vec2 vUV; in vec4 vC; in vec2 vM; in vec3 vW; uniform sampler2D uAtl; uniform float uTime; out vec4 o;
+float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
+vec3 atl(float cell){ vec2 t=clamp(vUV*.5+.5,0.,1.); vec2 ce=vec2(mod(cell,16.),floor(cell/16.));
+  vec2 tc=(ce+.008+vec2(t.x,1.-t.y)*.984)/vec2(16.,8.); return texture(uAtl,tc).rgb; }
+void main(){
+  float m=vM.x; vec3 c=vC.rgb; float A=vC.a; vec4 r;
+  if(m<.5){ vec3 tx=atl(vM.y); float L=max(tx.r,max(tx.g,tx.b)); r=vec4(mix(c*L,vec3(L),L*L*.7)*1.35,A); }
+  else if(m<1.5){ vec3 tx=atl(vM.y); float L=max(tx.r,max(tx.g,tx.b)); r=vec4(c*(.75+.4*L),clamp(L*1.15,0.,1.)*A); }
+  else if(m<2.5){ float v=vUV.y; float age=vUV.x;
+     if(vM.y>.5){ float x=v*2.-1.; r=vec4(c*1.2,A*exp(-x*x*3.)); }
+     else { float edge=pow(v,2.2); float core=exp(-pow((v-.93)/.07,2.));
+     float n=.75+.25*vn(vec2(age*9.-uTime*2.,v*4.));
+     r=vec4(mix(c,vec3(1.,.97,.85),core*.7)*1.3,A*(edge*.55+core*.9)*n*smoothstep(1.,.9,v)); } }
+  else if(m<3.5){ vec3 tx=atl(vM.y); r=vec4(tx*c*1.6,A); }
+  else if(m<4.5){ vec3 tx=atl(vM.y); float L=max(tx.r,max(tx.g,tx.b)); r=vec4(vec3(.02,.015,.012),L*A); }
+  else if(m<5.5){ // mira retangular
+     float x=abs(vUV.x), y=vUV.y*.5+.5; float len=vM.y;
+     float border=smoothstep(.86,.97,x)*(1.-smoothstep(.97,1.,x));
+     float fill=.10+.06*sin(y*len*3.-uTime*9.);
+     float tip=smoothstep(.9,1.,y);
+     float chev=step(fract(y*len*.9-uTime*1.5),.12)*(1.-x)*.35;
+     r=vec4(c,(border*.9+fill+chev+tip*.25)*A*smoothstep(0.,.05,y)); }
+  else { // círculo de alerta (Skill 3)
+     float d=length(vUV); float p=vM.y;
+     float ring=exp(-pow((d-.95)/.03,2.)); float fillr=p; float fill=smoothstep(fillr,fillr-.05,d)*.18;
+     float ef=exp(-pow((d-fillr)/.03,2.));
+     float ang=atan(vUV.y,vUV.x); float tick=step(.5,fract(ang*12./6.2832+uTime*.3))*exp(-pow((d-.8)/.02,2.))*.6;
+     r=vec4(c,(ring+fill+ef+tick)*A*smoothstep(1.02,.97,d)); }
+  o=r; }"""
     }
 
     enum class Orient { BILL, GROUND, AXIS, VBILL }
@@ -445,42 +484,4 @@ class Fx(ctx: Context) {
         glDepthMask(true); glDisable(GL_BLEND); glBindVertexArray(0)
     }
 
-    private val VS = """#version 300 es
-precision highp float;
-layout(location=0) in vec3 aP; layout(location=1) in vec2 aUV; layout(location=2) in vec4 aC; layout(location=3) in vec2 aM;
-uniform mat4 uVP; out vec2 vUV; out vec4 vC; out vec2 vM; out vec3 vW;
-void main(){ vUV=aUV; vC=aC; vM=aM; vW=aP; gl_Position=uVP*vec4(aP,1.); }"""
-
-    private val FS = """#version 300 es
-precision highp float;
-in vec2 vUV; in vec4 vC; in vec2 vM; in vec3 vW; uniform sampler2D uAtl; uniform float uTime; out vec4 o;
-float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
-vec3 atl(float cell){ vec2 t=clamp(vUV*.5+.5,0.,1.); vec2 ce=vec2(mod(cell,16.),floor(cell/16.));
-  vec2 tc=(ce+.008+vec2(t.x,1.-t.y)*.984)/vec2(16.,8.); return texture(uAtl,tc).rgb; }
-void main(){
-  float m=vM.x; vec3 c=vC.rgb; float A=vC.a; vec4 r;
-  if(m<.5){ vec3 tx=atl(vM.y); float L=max(tx.r,max(tx.g,tx.b)); r=vec4(mix(c*L,vec3(L),L*L*.7)*1.35,A); }
-  else if(m<1.5){ vec3 tx=atl(vM.y); float L=max(tx.r,max(tx.g,tx.b)); r=vec4(c*(.75+.4*L),clamp(L*1.15,0.,1.)*A); }
-  else if(m<2.5){ float v=vUV.y; float age=vUV.x;
-     if(vM.y>.5){ float x=v*2.-1.; r=vec4(c*1.2,A*exp(-x*x*3.)); }
-     else { float edge=pow(v,2.2); float core=exp(-pow((v-.93)/.07,2.));
-     float n=.75+.25*vn(vec2(age*9.-uTime*2.,v*4.));
-     r=vec4(mix(c,vec3(1.,.97,.85),core*.7)*1.3,A*(edge*.55+core*.9)*n*smoothstep(1.,.9,v)); } }
-  else if(m<3.5){ vec3 tx=atl(vM.y); r=vec4(tx*c*1.6,A); }
-  else if(m<4.5){ vec3 tx=atl(vM.y); float L=max(tx.r,max(tx.g,tx.b)); r=vec4(vec3(.02,.015,.012),L*A); }
-  else if(m<5.5){ // mira retangular
-     float x=abs(vUV.x), y=vUV.y*.5+.5; float len=vM.y;
-     float border=smoothstep(.86,.97,x)*(1.-smoothstep(.97,1.,x));
-     float fill=.10+.06*sin(y*len*3.-uTime*9.);
-     float tip=smoothstep(.9,1.,y);
-     float chev=step(fract(y*len*.9-uTime*1.5),.12)*(1.-x)*.35;
-     r=vec4(c,(border*.9+fill+chev+tip*.25)*A*smoothstep(0.,.05,y)); }
-  else { // círculo de alerta (Skill 3)
-     float d=length(vUV); float p=vM.y;
-     float ring=exp(-pow((d-.95)/.03,2.)); float fillr=p; float fill=smoothstep(fillr,fillr-.05,d)*.18;
-     float ef=exp(-pow((d-fillr)/.03,2.));
-     float ang=atan(vUV.y,vUV.x); float tick=step(.5,fract(ang*12./6.2832+uTime*.3))*exp(-pow((d-.8)/.02,2.))*.6;
-     r=vec4(c,(ring+fill+ef+tick)*A*smoothstep(1.02,.97,d)); }
-  o=r; }"""
 }
