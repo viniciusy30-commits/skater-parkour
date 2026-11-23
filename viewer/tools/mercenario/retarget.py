@@ -97,6 +97,21 @@ for s in 'lr':
         DIRECT += [fg + '_01_' + s, fg + '_02_' + s]
     DIRECT += ['thumb_01_' + s, 'thumb_02_' + s]
 
+def rotvec(R):
+    q = mq(R)
+    if q[3] < 0: q = -q
+    a = 2 * np.arctan2(np.linalg.norm(q[:3]), q[3]); n = np.linalg.norm(q[:3])
+    return np.zeros(3) if n < 1e-9 else q[:3] / n * a
+def fromvec(v):
+    a = np.linalg.norm(v)
+    if a < 1e-9: return np.eye(3)
+    k = v / a; K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]]); return np.eye(3) + np.sin(a) * K + (1 - np.cos(a)) * K @ K
+def fromaxis(k, a):
+    k = k / np.linalg.norm(k); K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]]); return np.eye(3) + np.sin(a) * K + (1 - np.cos(a)) * K @ K
+def soft(v, lo, hi):
+    return hi * np.tanh(v / hi) if v >= 0 else lo * np.tanh(v / lo)
+HEAD_LIM = dict(yaw=(np.radians(50), np.radians(50)), pitch=(np.radians(20), np.radians(24)), roll=(np.radians(7), np.radians(7)))   # (cima/esq, baixo/dir)
+
 class Target:
     def __init__(self, tp):
         self.names = tp['names']; self.par = tp['parent']; self.ix = {n: i for i, n in enumerate(self.names)}
@@ -116,6 +131,8 @@ class Target:
         for k in DIRECT: self.O[k] = self.F[k].T @ self.restWR[self.ix[k]]
         for k in SPINE_T + ['neck_02']: self.O[k] = self.Fk[k].T @ self.restWR[self.ix[k]]
         for k, pk in LEAF.items(): self.O[k] = self.F[pk].T @ self.restWR[self.ix[k]]
+        self.Rb = self.restWR[self.ix['spine_05']].T @ self.restWR[self.ix['head']]
+        self.A2 = self.F['chest'].T @ self.restWR[self.ix['spine_05']]
         self.driven = [k for k in self.names if k in self.O]
         self.rootW = np.eye(4)
         self.leg = self.restWP[self.ix['pelvis'], 1] - self.restWP[self.ix['foot_l'], 1]
@@ -124,7 +141,8 @@ def retarget_clip(S, T, anim, sFr):
     """anim: dict tracks; retorna (q[nf,nd,4] xyzw locais, pel[nf,3] translacao local do pelvis, driven names)"""
     nf = anim['nf']
     ndr = len(T.driven)
-    Q = np.zeros((nf, ndr, 4), np.float32); PEL = np.zeros((nf, 3), np.float32)
+    Q = np.zeros((nf, ndr, 4), np.float32); PEL = np.zeros((nf, 3), np.float32); raw_dev = []
+    retarget_clip.raw_dev = raw_dev
     Wroot = T.wpre  # root (rest) tem rotacao propria; usamos o repouso do root
     rootR = T.restWR[0]; rootP = T.restWP[0]
     scale = T.leg / (S.restWP[S.ix['pelvis'], 1] - S.restWP[S.ix['foot_l'], 1])
@@ -138,8 +156,26 @@ def retarget_clip(S, T, anim, sFr):
         for k in SPINE_T: Wt[k] = slerp_R(Fs['pelvis'], Fs['chest'], T.u[k]) @ T.O[k]
         Wt['neck_02'] = Fs['neck_01'] @ T.O['neck_02']
         for k, pk in LEAF.items():
-            Dl = WRs[S.ix[k]] @ S.restWR[S.ix[k]].T          # delta mundial da folha
-            Wt[k] = (Dl @ Fs_rest[pk]) @ T.O[k]
+            if k.startswith('ball') or k.endswith('_03_l') or k.endswith('_03_r') or k == 'head':
+                pass
+            Orel = Fs[pk].T @ WRs[S.ix[k]]                    # folha relativa ao frame anatomico do pai
+            Wt[k] = Fs[pk] @ (Orel @ NEUTRAL[k].T) @ T.O[k]   # desvio em relacao a pose NEUTRA das animacoes
+        # cabeca: de frente e nivelada (limites em relacao ao peito e ao horizonte do mundo)
+        Wc = Wt['spine_05']; Wn = Wc @ T.Rb
+        Dev = T.A2 @ (Wc.T @ (Wt['head'] @ Wn.T) @ Wc) @ T.A2.T
+        rv = rotvec(Dev); raw_dev.append(np.degrees(rv))
+        lim = lambda v, a, b: a * np.tanh(v / a) if v >= 0 else b * np.tanh(v / b)
+        Dev2 = fromvec(np.array([lim(rv[0], np.radians(52), np.radians(52)), lim(rv[1], np.radians(30), np.radians(30)), lim(rv[2], np.radians(14), np.radians(14))]))
+        Wh = Wc @ (T.A2.T @ Dev2 @ T.A2) @ Wc.T @ Wn
+        Ah = Wh @ T.O['head'].T                    # frame anatomico da cabeca no mundo: col0=cima, col1=esquerda, col2=tras
+        for _ in range(2):
+            fwd = -Ah[:, 2]; left = Ah[:, 1]
+            pit = np.arcsin(np.clip(fwd[1], -1, 1)); tp_ = lim(pit, np.radians(16), np.radians(16))
+            if abs(pit - tp_) > 1e-6: R = fromaxis(left, pit - tp_); Ah = R @ Ah        # + = cabeca para baixo
+            fwd = -Ah[:, 2]; left = Ah[:, 1]
+            rol = np.arcsin(np.clip(left[1], -1, 1)); tr_ = lim(rol, np.radians(7), np.radians(7))
+            if abs(rol - tr_) > 1e-6: R = fromaxis(fwd, -(rol - tr_)); Ah = R @ Ah
+        Wt['head'] = Ah @ T.O['head']
         # rotacoes locais (ossos nao dirigidos seguem o pai com o repouso local)
         WR = [None] * len(T.names)
         for i, k in enumerate(T.names):
@@ -163,3 +199,21 @@ def retarget_clip(S, T, anim, sFr):
         for f in range(1, nf):
             if Q[f, j] @ Q[f - 1, j] < 0: Q[f, j] = -Q[f, j]
     return Q, PEL
+
+
+NEUTRAL = {}
+def chordal_mean(Rs):
+    M = np.sum(Rs, 0); U, _, Vt = np.linalg.svd(M); D = np.diag([1, 1, np.sign(np.linalg.det(U @ Vt))]); return U @ D @ Vt
+
+def compute_neutral(S, A, step=4):
+    """Pose neutra de cada folha (cabeca, pontas dos dedos, ponta do pe) = media de todas as animacoes.
+    O repouso do esqueleto UE nao e a pose neutra das animacoes (cabeca ~60 graus fora)."""
+    acc = {k: [] for k in LEAF}
+    for rel, a in A.items():
+        for f in range(0, a['nf'], step):
+            WR, WP = S.pose(a, f); Fs = anat_frames(WP, S.ix, 'spine_03')
+            for k, pk in LEAF.items(): acc[k].append(Fs[pk].T @ WR[S.ix[k]])
+    N = {k: chordal_mean(np.array(v)) for k, v in acc.items()}
+    dev = {k: float(np.mean([np.degrees(np.arccos(np.clip((np.trace(N[k].T @ R) - 1) / 2, -1, 1))) for R in acc[k][::7]])) for k in ('head', 'ball_l', 'index_03_l')}
+    print('desvio medio em torno do neutro (graus):', {k: round(v) for k, v in dev.items()})
+    NEUTRAL.update(N); return N

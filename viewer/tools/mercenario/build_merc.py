@@ -13,6 +13,7 @@ tp = pickle.load(open(WORK + '/target.pkl', 'rb')); T = Target(tp)
 A = pickle.load(open(WORK + '/anims.pkl', 'rb'))
 raw = pickle.load(open(WORK + '/blades_raw.pkl', 'rb'))
 sFr = anat_frames(S.restWP, S.ix, 'spine_03')
+compute_neutral(S, A)
 
 # ------------------------------------------------------------------ selecao de clipes
 CATS = ['Parado', 'Andar', 'Correr', 'Esquiva', 'Pulo', 'Agachar', 'Giros', 'Defesa', 'Ataques', 'Combos', 'Especiais', 'Dano', 'Queda', 'Morte']
