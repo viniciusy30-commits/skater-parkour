@@ -2716,7 +2716,7 @@ void main(){vec4 p=vec4(uCtr+aPos.xyz*uExt,1.);mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+
   // ---- faixa de nome da habilidade
   function banner(n,tag,big){const b=$e('ban');if(!b)return;b.innerHTML='<small>'+tag+'</small><b>'+n+'</b>';b.className='';void b.offsetWidth;b.className='go'+(big?' big':'')}
   // ---- ghosts (imagens residuais): cada um guarda sua propria textura de ossos
-  const GN=7,gTex=[],gUse=new Array(GN).fill(null);
+  const GN=10,gTex=[],gUse=new Array(GN).fill(null);
   for(let i=0;i<GN;i++){const tx=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tx);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,4,NB,0,gl.RGBA,gl.FLOAT,null);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gTex.push(tx)}
   const GH=[],gQ=new Float32Array(ND*4),gP=new Float32Array(3),gpQ=new Float32Array(NB*4),gpT=new Float32Array(NB*3),gW=new Float32Array(NB*16),gSK=new Float32Array(NB*16);
@@ -2724,7 +2724,7 @@ void main(){vec4 p=vec4(uCtr+aPos.xyz*uExt,1.);mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+
     fk(gpQ,gpT,gW);for(let k=0;k<NB;k++)M4.mul(gSK.subarray(k*16,k*16+16),gW.subarray(k*16,k*16+16),INV.subarray(k*16,k*16+16));return gSK}
   function addGhost(skm,o){let idx=gUse.indexOf(null);if(idx<0){let oi=0,oa=-1;GH.forEach((g,i)=>{if(g.age>oa){oa=g.age;oi=i}});idx=GH[oi].tex;GH.splice(oi,1)}
     gUse[idx]=1;gl.bindTexture(gl.TEXTURE_2D,gTex[idx]);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,4,NB,gl.RGBA,gl.FLOAT,skm);
-    GH.push({tex:idx,age:0,life:(o.life||.3)*.8,col:o.col||CY,a:(o.a==null?.9:o.a)*.5,A:Object.assign({x:act.x,y:act.y,z:act.z,yaw:act.yaw},o.A||{}),to:o.to||null,fat:o.fat||0})}
+    GH.push({tex:idx,age:0,life:(o.life||.3)*.8,col:o.col||CY,a:(o.a==null?.9:o.a)*.5,A:Object.assign({x:act.x,y:act.y,z:act.z,yaw:act.yaw},o.A||{}),to:o.to||null,fat:o.fat||0,mv:o.mv||0,hold:o.hold||0,anim:o.anim||null,wm:o.anim?[new Float32Array(16),new Float32Array(16)]:null})}
   const ghostNow=(o)=>addGhost(SK,o);
   // ---- laminas: pontos de base/ponta no mundo + historico (rastro)
   const BL=[0,1].map(()=>({tip:[0,0,0],base:[0,0,0],pt:null,v:[0,0,0],sp:0,hist:[]}));
@@ -2825,7 +2825,7 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
   //  habilidades
   // =====================================================================================================
   const ci=n=>{const i=clips.findIndex(c=>c.name===n);if(i<0)throw new Error('clip '+n);return i};
-  const CI={};['Idle','4Combo A 1','4Combo A 2','4Combo A 3','4Combo A 4','Dash A','Rapid ALL','Upper ALL','Jump Spiral ALL','Skill G Finishing ALL','Skill A','Skill B','Skill C','Skill E ALL','Skill H','Skill J ALL'].forEach(n=>CI[n]=ci(n));
+  const CI={};['Idle','4Combo A 1','4Combo A 2','4Combo A 3','4Combo A 4','Dash A','Rapid ALL','Upper ALL','Jump Spiral ALL','Skill G Finishing ALL','Skill A','Skill B','Skill C','Skill E ALL','Skill H','Skill J ALL','Spear L','Spear R','Skill D','Skill E Attack','Dash B Spiral'].forEach(n=>CI[n]=ci(n));
   let run=null,trailOn=false;
   const BQ={i:0,last:-9};
   const rr=(a,b)=>rnd(a,b);
@@ -2910,62 +2910,41 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     end(r){trailBoost=0;TG.spin=0}};
   // ULTIMATE: MIL LAMINAS — DANCA DO VAZIO
   const CUTS=14;
-  // ---- ULTIMATE: convergencia (fogo+gelo) -> danca dos cortes (o proprio duelista surge ao redor) -> ascensao em helice -> mergulho -> impacto dividido
-  const ULT_POSES=[['Skill A',8],['Skill B',8],['Skill C',8],['Skill E ALL',10],['Skill H',6],['Skill J ALL',8],['Rapid ALL',8],['Dash A',6]];
-  const ULT_N=12,T_A=1.3,T_B1=T_A+2.15,T_C1=T_B1+.8,T_D1=T_C1+.5,T_IMP2=T_D1+.2;
-  function helixPts(cx,cz,y0,y1,R,turns,ph){const P=[];for(let i=0;i<=26;i++){const s=i/26,th=ph+turns*6.2832*s,rr_=R*(1-.35*s);P.push([cx+Math.cos(th)*rr_,lerp(y0,y1,s),cz+Math.sin(th)*rr_])}return P}
-  const helixPair=(life,fnc)=>{[FIRE_C,ICE_C].forEach((col,q)=>poly([[0,0,0],[0,0,1]],.05,life,col,{grow:.18,wg:2.6,fn:r=>fnc(r,q)}))};
+  // ---- ULTIMATE: estocada -> clones avancam, cada um com uma tecnica -> o duelista some -> surge no ar -> golpe descendente
+  const ULT_TECH=[
+    {n:'Spear L',f0:6,f1:26,fps:40,h:.3,air:0},{n:'Skill D',f0:2,f1:22,fps:40,h:.28,air:0},{n:'Upper ALL',f0:6,f1:36,fps:45,h:.34,air:.45},{n:'Skill E Attack',f0:4,f1:26,fps:40,h:.32,air:0},
+    {n:'Dash B Spiral',f0:6,f1:32,fps:45,h:.32,air:.35},{n:'Skill H',f0:6,f1:28,fps:40,h:.32,air:0},{n:'Rapid ALL',f0:12,f1:46,fps:60,h:.3,air:0},{n:'Skill A',f0:10,f1:36,fps:45,h:.32,air:.3}];
+  const ULT_K=8,U_TH=.62,U_CL0=.5,U_CLD=.105,U_VAN=.95,U_AIR=U_CL0+ULT_K*U_CLD+1.0,U_DIVE=U_AIR+.6,U_IMP=U_DIVE+.22;
   DEF.ult={nome:'Mil Lâminas: Dança do Vazio',tag:'ULTIMATE',custom:true,
-    start(r){r.el=0;r.k=0;r.next=T_A+.1;r.gt=0;r.imp=false;r.lines=[];r.st=null;r.ph=0;trailLife=.4;trailCol=MG;banner(this.nome,this.tag,true);SFX.rise(1.2);SFX.boom(.35);trailBoost=.5;blendDur=.12;
-      setClipRaw(CI['Skill G Finishing ALL'],0);flash(.2,'#ffd9a8');
-      helixPair(T_A,(rr_,q)=>{const e=Math.min(run?run.el:0,T_A),u=e/T_A;return helixPts(act.x,act.z,0,.4+1.5*u,lerp(1.15,.32,u*u),2.2,e*7*(q?-1:1)+q*3.1416)});
-      for(let i=0;i<3;i++)ring([act.x,.03,act.z],3.4+i*.6,.25,.045,T_A*.9+i*.1,i%2?ICE_C:FIRE_C,.7)},
-    tick(r,dt){r.el+=dt;const e=r.el;
-      if(e<T_A){const u=e/T_A;t=lerp(0,11,ss(0,1,u))/30;CAMF.dim=ss(0,.8,u)*.55;CAMF.zt=lerp(1,.9,u);CAMF.yawk=u*.25;trailBoost=.3;
-        r.gt-=dt;if(r.gt<=0){r.gt=.045;const a=rr(0,6.283),R=rr(.8,1.8),sl=Math.random()<.5;spark([act.x+Math.cos(a)*R,rr(.05,1.4),act.z+Math.sin(a)*R],[-Math.cos(a)*2.2,rr(.2,1),-Math.sin(a)*2.2],.55,.03,sl?FIRE_C:ICE_C,1,-.2)}
-        if(e>T_A-.12&&!r.fl){r.fl=1;flash(.35,'#ffffff');shock([act.x,0,act.z],3,.07,WH,{sh:.1})}}
-      else if(e<T_B1){ // danca: o duelista surge ao redor do alvo e corta
-        CAMF.dim=.62;CAMF.zt=lerp(.9,1.35,ss(T_A,T_B1,e));CAMF.yawk=lerp(.25,3.6,ss(T_A,T_B1,e));CAMF.roll=Math.sin(e*2.4)*.018;act.vis=true;
-        const S=r.st;
-        if(e>=r.next&&r.k<ULT_N){const k=r.k++,u=k/(ULT_N-1);r.next=e+lerp(.22,.085,u*u);
-          const a=k*2.4+rr(-.3,.3),R=1.15,c=tgPoint(),hi=k%3===2?rr(.5,1.1):0;
-          const from=[c[0]+Math.cos(a)*R,hi,c[2]+Math.sin(a)*R],to=[c[0]-Math.cos(a)*R*.95,hi*.4,c[2]-Math.sin(a)*R*.95];
-          if(act.vis)ghostNow({life:.25,col:k%2?ICE_C:FIRE_C,a:.5});
-          BL.forEach(b=>{b.pt=null;b.hist.length=0});
-          const P=ULT_POSES[(k*3+1)%ULT_POSES.length];setClipRaw(CI[P[0]],P[1]);blendDur=.05;
-          const yaw=Math.atan2(to[0]-from[0],to[2]-from[2]);
-          r.st={k,from,to,yaw,e0:e,dur:Math.max(.16,r.next-e),f0:P[1],hit:false,c};
-          burst(vadd(from,[0,.7,0]),10,2.4,.03,k%2?ICE_C:FIRE_C,.35,-1);SFX.swish(1+u*.6);if(k%2===0)SFX.tick(1+u*.5);
-          // corte colorido: lua crescente + linha fina permanente
-          const dir=vnorm(vsub(to,from)),ang=Math.atan2(vdot(dir,camU),vdot(dir,camR));const col=k%2?ICE_C:FIRE_C;
-          arc(c,.8+u*.3,ang+Math.PI/2+rr(-.6,.6),2.4,.07,.3,col,{grow:.05});
-          if(r.lines.length<9)r.lines.push(line(vadd(c,vmul(dir,-1.6)),vadd(c,vmul(dir,1.6)),.022,9,col,{grow:.07,a:.7}))}
-        if(r.st){const q=r.st,w=clp((e-q.e0)/q.dur,0,1),m=ei(clp(w*1.6,0,1));act.x=lerp(q.from[0],q.to[0],m);act.z=lerp(q.from[2],q.to[2],m);act.y=lerp(q.from[1],q.to[1],m);act.yaw=q.yaw;t=(q.f0+(e-q.e0)*30*1.5)/30;trailBoost=1;
-          if(!q.hit&&w>.3){q.hit=true;const h=q.k%2?0:1;TG.jit=.8;hitFx(h,.65+q.k*.03,{dmg:rr(120,260)*(1+q.k*.12),at:q.c});if(q.k===ULT_N-1)slow(.2,.35)}
-          r.gt-=dt;if(r.gt<=0){r.gt=.03;ghostNow({life:.16,col:q.k%2?ICE_C:FIRE_C,a:.35})}}
-        r.lines.forEach((l,i)=>{l.a=.55+.25*Math.sin(e*12+i*1.7)})}
-      else if(e<T_C1){ // ascensao
-        const u=(e-T_B1)/(T_C1-T_B1);CAMF.dim=.7;CAMF.zt=lerp(1.35,1.6,u);CAMF.yawk=lerp(3.6,6.2832,ss(0,1,u));CAMF.roll=0;
-        if(!r.up){r.up=1;const c=tgPoint();BL.forEach(b=>{b.pt=null;b.hist.length=0});act.x=TG.x;act.z=TG.z-.5;act.yaw=0;act.vis=true;ghostNow({life:.3,col:WH,a:.5});flash(.15,'#ffffff');SFX.rise(.9);
-          shock([act.x,0,act.z],2.6,.08,FIRE_C,{sh:.2});ring([act.x,.03,act.z],.2,3.6,.06,.7,ICE_C,.8);
-          helixPair(T_C1-T_B1+.2,(rr_,q)=>helixPts(act.x,act.z,Math.max(0,act.y-2),act.y+.6,.6,2.6,(run?run.el:0)*10*(q?-1:1)+q*3.1416))}
-        act.x=TG.x;act.z=TG.z-.5;act.y=4.4*ei(u)*(2-ei(u))*.5+4.4*.5*u;act.yaw=0;t=lerp(11,46,ss(0,1,u))/30;trailBoost=.8;
-        r.gt-=dt;if(r.gt<=0){r.gt=.03;spark([act.x+rr(-.3,.3),act.y+rr(0,.8),act.z+rr(-.3,.3)],[rr(-.3,.3),-rr(1,2.5),rr(-.3,.3)],.6,.035,Math.random()<.5?FIRE_C:ICE_C,1,0)}}
-      else if(e<T_D1){ // suspenso no ar: energia concentrada nas laminas
-        const u=(e-T_C1)/(T_D1-T_C1);CAMF.dim=.78;CAMF.zt=1.6;act.y=4.4+Math.sin(e*9)*.03;act.x=TG.x;act.z=TG.z-.5;act.yaw=0;t=46/30;trailBoost=.2;
-        if(!r.hang){r.hang=1;r.lines.forEach(l=>{l.a=1;l.w=.05});SFX.rise(.6);flash(.1,'#ffffff')}
-        r.gt-=dt;if(r.gt<=0){r.gt=.02;for(let i=0;i<2;i++){const b=BL[i];if(b.pt)spark(vadd(b.tip,[rr(-.5,.5),rr(-.3,.5),rr(-.5,.5)]),[0,0,0],.28,.03,AUC[i],1,0,0)}}
-        if(u>.3&&BL[0].pt&&BL[1].pt){/* brilho crescente nas pontas */const k=ss(.3,1,u);spark(BL[0].tip,[0,0,0],.05,.12*k,ICE_C,.9*k,0,0);spark(BL[1].tip,[0,0,0],.05,.12*k,FIRE_C,.9*k,0,0)}}
-      else if(e<T_IMP2){ // mergulho
-        const u=(e-T_D1)/(T_IMP2-T_D1);act.x=TG.x;act.z=TG.z-.5;act.yaw=0;act.y=lerp(4.4,0,u*u);t=lerp(46,54,u)/30;trailBoost=1;CAMF.zt=lerp(1.6,1.45,u);
-        for(let i=0;i<2;i++){const b=BL[i];if(b.pt){const p=b.tip;line(p,[p[0]+rr(-.1,.1),p[1]+rr(1.2,2.4),p[2]+rr(-.1,.1)],.035,.14,AUC[i],{grow:.03})}}
-        if(!r.pl){r.pl=1;SFX.rise(.25);SFX.dash()}}
-      if(e>=T_IMP2&&!r.imp){r.imp=true;r.ie=e;act.y=0;act.x=TG.x;act.z=TG.z-.5;act.yaw=0;const c=[TG.x,.5,TG.z];
-        flash(.38,'#fff4e6');shake(1.4);slow(.1,.55);CAMF.zt=1.6;CAMF.dim=0;CAMF.yawk=0;SFX.boom(1.5);SFX.shatter();SFX.ping();
-        r.lines.forEach(l=>{l.life=1.4;l.age=0;l.hold=.2;l.w=.12;l.a=1;l.flare=1});
-        // X: uma diagonal de fogo e outra de gelo
+    start(r){r.el=0;r.q=[];r.lines=[];r.imp=false;r.gt=0;r.k=0;trailLife=.4;trailCol=MG;banner(this.nome,this.tag,true);SFX.rise(.8);trailBoost=.6;blendDur=.1;
+      setClipRaw(CI['Spear R'],0);flash(.15,'#ffd9a8');ring([act.x,.03,act.z],3,.3,.05,.6,FIRE_C,.7);ring([act.x,.03,act.z],3.6,.3,.05,.7,ICE_C,.7);
+      r.bz0=act.z;
+      for(let k=0;k<ULT_K;k++)r.q.push({t:U_CL0+k*U_CLD,fn:()=>ultClone(r,k)});
+      r.q.push({t:U_VAN,fn:()=>{act.vis=false;const p=[act.x,.9,act.z];burst(p,28,4.5,.04,FIRE_C,.5,-1);burst(p,28,4.5,.04,ICE_C,.5,-1);ring([act.x,.03,act.z],.2,2.4,.06,.5,WH,.8);flash(.2,'#ffffff');SFX.dash();BL.forEach(b=>{b.pt=null;b.hist.length=0})}});
+      r.q.push({t:U_AIR,fn:()=>{BL.forEach(b=>{b.pt=null;b.hist.length=0});act.x=TG.x;act.z=TG.z-.4;act.y=3.8;act.yaw=0;act.vis=true;setClipRaw(CI['Skill G Finishing ALL'],46);blendDur=.05;
+        flash(.4,'#ffffff');slow(.25,.5);SFX.rise(.7);const c=tgPoint();ring([TG.x,.03,TG.z],.2,3.2,.07,.7,FIRE_C,.85);ring([TG.x,.03,TG.z],.2,2.4,.06,.6,ICE_C,.85);
+        burst([act.x,act.y+.6,act.z],30,4,.04,FIRE_C,.6,-1);burst([act.x,act.y+.6,act.z],30,4,.04,ICE_C,.6,-1);
+        r.lines.push(line([TG.x,0,TG.z],[TG.x,6,TG.z],.05,2,WH,{grow:.05,a:.4}));
+        const cc=[act.x,act.y+.9,act.z];arc(cc,.95,.4,5.4,.05,.9,FIRE_C,{grow:.2});arc(cc,.95,3.54,5.4,.05,.9,ICE_C,{grow:.2});arc(cc,1.25,1.2,4,.035,.8,WH,{grow:.25,a:.7})}});
+    },
+    tick(r,dt){r.el+=dt;const e=r.el;while(r.q.length&&r.q[0].t<=e)r.q.shift().fn();
+      if(e<U_VAN){ // estocada do duelista
+        const u=clp(e/U_TH,0,1);t=lerp(2,22,ss(0,1,u))/30;act.z=r.bz0+.75*ss(.15,.6,e);act.vis=true;
+        CAMF.dim=ss(0,.6,e)*.45;CAMF.zt=lerp(1,1.15,u);CAMF.yawk=lerp(0,.75,ss(0,U_TH,e));trailBoost=.8;
+        if(e>.45&&!r.th){r.th=1;const c=tgPoint();line(vadd(c,[0,0,-1.1]),vadd(c,[0,0,.4]),.05,.4,WH,{grow:.04,a:.9});shake(.08);SFX.swish(1.2)}}
+      else if(e<U_AIR){ // clones atacando; o duelista ja sumiu
+        CAMF.dim=.55;CAMF.zt=lerp(1.15,1.35,ss(U_VAN,U_AIR,e));CAMF.yawk=lerp(.75,1.5,ss(U_VAN,U_AIR,e));act.vis=false}
+      else if(e<U_DIVE){ // suspenso no ar sobre o inimigo
+        const u=(e-U_AIR)/(U_DIVE-U_AIR);CAMF.dim=.28;CAMF.zt=lerp(1.0,.85,u);CAMF.yawk=lerp(1.5,.2,ss(0,1,u));act.vis=true;act.x=TG.x;act.z=TG.z-.4;act.yaw=0;act.y=3.8+Math.sin(e*9)*.03;t=46/30;trailBoost=.3;
+        r.gt-=dt;if(r.gt<=0){r.gt=.02;for(let i=0;i<2;i++){const b=BL[i];if(b.pt)spark(vadd(b.tip,[rr(-.4,.4),rr(-.2,.4),rr(-.4,.4)]),[0,0,0],.26,.03,AUC[i],1,0,0)}}
+        if(BL[0].pt&&BL[1].pt){const k=ss(0,1,u);spark(BL[0].tip,[0,0,0],.05,.14*k,ICE_C,.9*k,0,0);spark(BL[1].tip,[0,0,0],.05,.14*k,FIRE_C,.9*k,0,0)}}
+      else if(e<U_IMP){ // golpe descendente
+        const u=(e-U_DIVE)/(U_IMP-U_DIVE);act.x=TG.x;act.z=TG.z-.4;act.yaw=0;act.y=lerp(3.8,0,u*u);t=lerp(46,54,u)/30;trailBoost=1;CAMF.dim=.2*(1-u);CAMF.zt=lerp(.85,1.2,u);CAMF.yawk=lerp(.2,0,u);
+        for(let i=0;i<2;i++){const b=BL[i];if(b.pt){const p=b.tip;line(p,[p[0]+rr(-.08,.08),p[1]+rr(1.2,2.4),p[2]+rr(-.08,.08)],.035,.14,AUC[i],{grow:.03})}}
+        if(!r.pl){r.pl=1;SFX.rise(.2);SFX.dash()}}
+      if(e>=U_IMP&&!r.imp){r.imp=true;r.ie=e;act.y=0;act.x=TG.x;act.z=TG.z-.4;act.yaw=0;const c=[TG.x,.5,TG.z];CAMF.yawk=0;
+        flash(.38,'#fff4e6');shake(1.4);slow(.1,.55);CAMF.zt=1.6;CAMF.dim=0;SFX.boom(1.5);SFX.shatter();SFX.ping();
         line([c[0]-4.6,c[1]-3,c[2]],[c[0]+4.6,c[1]+3,c[2]],.17,1.4,FIRE_C,{grow:.07,hold:.2,flare:.5,a:.85});line([c[0]+4.6,c[1]-3,c[2]],[c[0]-4.6,c[1]+3,c[2]],.17,1.4,ICE_C,{grow:.07,hold:.2,flare:.5,a:.85});
-        // dois pilares: gelo a esquerda, fogo a direita
         for(const [sx,col] of [[-.45,ICE_C],[.45,FIRE_C]]){line([c[0]+sx,-.2,c[2]],[c[0]+sx,8,c[2]],.3,1.4,col,{grow:.05,hold:.15,flare:.4,a:.65});line([c[0]+sx,-.2,c[2]],[c[0]+sx,8,c[2]],.08,1.4,WH,{grow:.05,hold:.25,a:.8})}
         ring([c[0],.03,c[2]],.1,8,.12,1.4,FIRE_C,.85);ring([c[0],.03,c[2]],.1,6,.1,1.2,ICE_C,.85);ring([c[0],.03,c[2]],.1,3.6,.08,1,WH,.8);ring([c[0],.03,c[2]],.1,10.5,.08,1.8,MG,.55);
         cracks([c[0],0,c[2]],14,5,FIRE_C,1.8);cracks([c[0],0,c[2]],12,4,ICE_C,1.6);
@@ -2974,12 +2953,24 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
         TG.vis=0;TG.fade=-1;dmg(99999,[c[0],c[1]+.5,c[2]],'huge');dmg(24999,[c[0]-.5,c[1]+.1,c[2]],'crit');dmg(18888,[c[0]+.5,c[1]+.9,c[2]],'crit')}
       if(r.imp){const q=e-r.ie;
         if(q<.35){t=lerp(54,66,ss(0,.35,q))/30}else t=lerp(66,80,ss(.35,1.2,q))/30;
-        if(q>.45&&q<1.3){CAMF.zt=lerp(1.6,1,ss(.45,1.4,q))}CAMF.yawk=lerp(CAMF.yawk,0,clp(dt*1.5,0,1));
+        if(q>.45&&q<1.3){CAMF.zt=lerp(1.6,1,ss(.45,1.4,q))}
         if(q>1.05&&TG.fade<=0&&!r.resp){r.resp=1;TG.fade=1}
         r.gt-=dt;if(r.gt<=0&&q<1.4){r.gt=.05;const sx=Math.random()<.5;spark([TG.x+rr(-2.5,2.5),rr(0,.2),TG.z+rr(-2.5,2.5)],[rr(-.3,.3),rr(1.5,4),rr(-.3,.3)],1,.04,sx?FIRE_C:ICE_C,1,-1.2)}
         trailBoost=q<.8?1:0;if(q>1.9)r.done=true}}
     ,end(r){act.vis=true;act.x=BASE.x;act.y=0;act.z=BASE.z;act.yaw=0;CAMF.dim=0;CAMF.zt=1;CAMF.roll=0;CAMF.yawk=0;trailBoost=0;TG.vis=1;TG.fade=0;
       r.lines&&r.lines.forEach(l=>{l.life=Math.min(l.life,l.age+.3)})}};
+  // um clone: nasce na posicao do duelista, avanca rapido ate o alvo e executa a propria tecnica (animacao propria)
+  function ultClone(r,k){const T=ULT_TECH[k%ULT_TECH.length],c=tgPoint(),a=k*2.4+.4,R=1.0;
+    const P=[c[0]+Math.cos(a)*R,T.air,c[2]+Math.sin(a)*R],yaw=Math.atan2(c[0]-P[0],c[2]-P[2]),col=k%2?ICE_C:FIRE_C,ci_=CI[T.n];
+    const src={x:act.x,y:act.y,z:act.z};
+    addGhost(skFromClip(ci_,T.f0),{life:.16+.55,mv:.16,hold:.75,col,a:.8,A:{x:src.x,y:src.y,z:src.z,yaw},to:{x:P[0],y:P[1],z:P[2]},anim:{ci:ci_,f0:T.f0,f1:T.f1,fps:T.fps}});
+    // rastro de avanco
+    line([src.x,.9,src.z],[P[0],P[1]+.9,P[2]],.04,.25,col,{grow:.03,a:.7});SFX.swish(1+k*.05);
+    r.q.push({t:r.el+.16,fn:()=>{burst([P[0],P[1]+.8,P[2]],8,2.2,.03,col,.3,-1)}});
+    r.q.push({t:r.el+.16+T.h,fn:()=>{const h=k%2?0:1;TG.jit=.8;
+      hitFx(h,.7+k*.04,{dmg:rr(140,300)*(1+k*.1),at:c,col});
+      arc(c,.75+rr(0,.25),rr(0,6.28),2.4,.06,.28,col,{grow:.05});if(k%2===0)SFX.tick(1+k*.06)}});
+    r.q.sort((x,y)=>x.t-y.t)}
   // ---------------------------------------------------------------------------------------------------
   function setClipRaw(i,f){if(clips[cur]&&!restMode){prev={q:new Float32Array(sQ),pt:new Float32Array(sP),ci:cur,t0:t};blend=0}cur=i;t=f/30}
   function startSkill(id){const def=DEF[id];if(!def)return;AC();
@@ -3015,7 +3006,7 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
   // camera: segue o ator
   const foc={x:0,y:.5,z:0};
   function camStep(dt,dts){dts=dts==null?dt:dts;const aut=cam.auto!==false,ult=aut&&run&&run.id==='ult',mid=aut&&run&&TG.on&&!ult;const tx=ult?TG.x:(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*(run.el<1.4?.5:.7):(mid?(act.z+TG.z)*.5:act.z);
-    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1)+clp(act.y*.5,0,3);if(ult){ty=.62+clp(act.y*.78,0,3.6)}
+    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1)+clp(act.y*.5,0,3);if(ult){ty=.62+clp(act.y*.88,0,3.8)}
     const k=clp(dt*7,0,1);foc.x+=(tx-foc.x)*k;foc.z+=(tz-foc.z)*k;foc.y+=(ty-foc.y)*k;
     CAMF.zoom+=(CAMF.zt-CAMF.zoom)*clp(dt*6,0,1);CAMF.shake*=Math.pow(.003,dts);CAMF.flash*=Math.pow(.0008,dt);CAMF.roll*=Math.pow(.05,dts);
     dimEl.style.opacity=String(clp(CAMF.dim,0,1));const fl=$e('flash');if(fl){fl.style.opacity=String(clp(CAMF.flash,0,1));fl.style.background=CAMF.flashC}}
@@ -3054,9 +3045,17 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
       gl.uniformMatrix4fv(U(PD,'uM'),false,M);gl.bindVertexArray(dumVao);gl.drawElements(gl.TRIANGLES,dumN,gl.UNSIGNED_SHORT,0)}
     // efeitos aditivos
     gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);gl.depthMask(false);
-    if(GH.length){gl.useProgram(PGH);gl.uniformMatrix4fv(U(PGH,'uVP'),false,VP);gl.uniform3fv(U(PGH,'uCtr'),man.char.ctr);gl.uniform3fv(U(PGH,'uExt'),man.char.ext);gl.uniform3fv(U(PGH,'uCam'),eye);gl.uniform1i(U(PGH,'uBones'),1);gl.bindVertexArray(mc.vao);
-      for(const g of GH){const u=g.age/g.life;const A=g.A;if(g.to){const e=g.fat?Math.min(1,u*1.25):u;buildAct(mA,lerp(A.x,g.to.x,e),lerp(A.y,g.to.y,e),lerp(A.z,g.to.z,e),A.yaw)}else buildAct(mA,A.x,A.y,A.z,A.yaw);
-        gl.uniformMatrix4fv(U(PGH,'uAct'),false,mA);gl.uniform3fv(U(PGH,'uCol'),g.col);gl.uniform1f(U(PGH,'uA'),g.a*Math.pow(1-u,1.3));gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,gTex[g.tex]);gl.drawElements(gl.TRIANGLES,mc.n,gl.UNSIGNED_INT,0)}
+    if(GH.length){
+      for(const g of GH){const u=g.age/g.life;const A=g.A;
+        if(g.anim){const an=g.anim,sk=skFromClip(an.ci,Math.min(an.f0+g.age*an.fps,an.f1));gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,gTex[g.tex]);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,4,NB,gl.RGBA,gl.FLOAT,sk);
+          for(let i=0;i<2;i++)M4.mul(g.wm[i],gW.subarray(mw[i].w.bone*16,mw[i].w.bone*16+16),attM[i])}
+        if(g.to){const e=g.mv?eo(g.age/g.mv):(g.fat?Math.min(1,u*1.25):u);buildAct(mA,lerp(A.x,g.to.x,e),lerp(A.y,g.to.y,e),lerp(A.z,g.to.z,e),A.yaw)}else buildAct(mA,A.x,A.y,A.z,A.yaw);
+        const al=g.hold?g.a*Math.min(1,g.age/.05)*(u<g.hold?1:Math.pow(1-(u-g.hold)/(1-g.hold),1.2)):g.a*Math.pow(1-u,1.3);
+        gl.useProgram(PGH);gl.uniformMatrix4fv(U(PGH,'uVP'),false,VP);gl.uniform3fv(U(PGH,'uCtr'),man.char.ctr);gl.uniform3fv(U(PGH,'uExt'),man.char.ext);gl.uniform3fv(U(PGH,'uCam'),eye);gl.uniform1i(U(PGH,'uBones'),1);gl.bindVertexArray(mc.vao);
+        gl.uniformMatrix4fv(U(PGH,'uAct'),false,mA);gl.uniform3fv(U(PGH,'uCol'),g.col);gl.uniform1f(U(PGH,'uA'),al);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,gTex[g.tex]);gl.drawElements(gl.TRIANGLES,mc.n,gl.UNSIGNED_INT,0);
+        if(g.wm&&showW){gl.useProgram(PW);gl.uniformMatrix4fv(U(PW,'uVP'),false,VP);gl.uniform3fv(U(PW,'uCam'),eye);gl.uniform1f(U(PW,'uMetal'),.35);gl.uniform1f(U(PW,'uRim'),0);gl.uniform1f(U(PW,'uTm'),0);gl.uniform1f(U(PW,'uRune'),0);
+          gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tw);gl.uniform1i(U(PW,'uTex'),0);gl.blendColor(0,0,0,Math.min(1,al*.9));gl.blendFunc(gl.CONSTANT_ALPHA,gl.ONE);
+          mw.forEach((m,i)=>{M4.mul(wm,mA,g.wm[i]);gl.uniform3fv(U(PW,'uCtr'),m.w.ctr);gl.uniform3fv(U(PW,'uExt'),m.w.ext);gl.uniformMatrix4fv(U(PW,'uM'),false,wm);gl.bindVertexArray(m.vao);gl.drawElements(gl.TRIANGLES,m.n,gl.UNSIGNED_INT,0)});gl.blendFunc(gl.ONE,gl.ONE)}}
       gl.activeTexture(gl.TEXTURE0)}
     const nq=buildRibbons(lastDt);if(nq>0){gl.useProgram(PRB);gl.uniformMatrix4fv(U(PRB,'uVP'),false,VP);gl.bindVertexArray(rbVao);gl.bindBuffer(gl.ARRAY_BUFFER,rbBuf);gl.bufferSubData(gl.ARRAY_BUFFER,0,RBUF,0,rn);gl.drawArrays(gl.TRIANGLES,0,nq)}
     if(PT.length){let n=0;for(const p of PT){const u=p.life/p.max;PBUF[n++]=p.p[0];PBUF[n++]=p.p[1];PBUF[n++]=p.p[2];PBUF[n++]=p.size*(.5+.5*u);PBUF[n++]=p.col[0];PBUF[n++]=p.col[1];PBUF[n++]=p.col[2];PBUF[n++]=p.a*u}
@@ -3163,7 +3162,7 @@ void main(){float k=vK.x;float L;vec3 col=vC.rgb;
     {id:'s2',nome:'Tempestade de Aço',tag:'Skill 2',cd:8,custo:40,icon:'i-m-storm',desc:'Rajada de mais de 30 cortes em menos de um segundo, vindos de todos os lados, com cópias residuais tremendo ao redor. Fecha com um X devastador.'},
     {id:'s3',nome:'Ceifa Ascendente',tag:'Skill 3',cd:10,custo:45,icon:'i-m-rise',desc:'Corte em lua crescente que lança o alvo ao céu. Ele o persegue no ar com três cortes, o lança de novo e o crava no chão com onda de choque e rachaduras.'},
     {id:'s4',nome:'Espiral Celeste',tag:'Skill 4',cd:12,custo:55,icon:'i-m-spiral',desc:'Salta e gira como um ciclone de lâminas, puxando o alvo para o redemoinho. Termina num mergulho que racha o chão, com anéis de choque e raios de luz caindo do alto.'},
-    {id:'ult',nome:'Mil Lâminas: Dança do Vazio',tag:'ULTIMATE',cd:60,custo:100,ult:true,icon:'i-m-ult',desc:'As auras de fogo e gelo convergem em espiral. O duelista some e reaparece ao redor do alvo em 12 cortes cada vez mais rápidos, a câmera girando. Sobe numa hélice de fogo e gelo, paira e mergulha como um meteoro: o impacto se divide em pilar de gelo e pilar de fogo, com um X duplo e ondas de choque.'}];
+    {id:'ult',nome:'Mil Lâminas: Dança do Vazio',tag:'ULTIMATE',cd:60,custo:100,ult:true,icon:'i-m-ult',desc:'Uma estocada fulminante faz 8 clones de fogo e gelo avançarem sobre o alvo, cada um com uma técnica diferente. O duelista some num instante, reaparece no ar sobre o inimigo e desce num golpe final que racha o chão: pilar de gelo e pilar de fogo, X duplo e ondas de choque.'}];
   const API={id:'mercenario',title:'Mercenário',
     clips:clips.map(c=>({name:c.name,cat:c.cat,dur:cdur(c),nf:c.nf})),cats:CATS,kit:KIT,
     frame,state:()=>({cur,t,dur:cdur(clips[cur]),playing,loop,speed,skill:run?run.id:null}),
