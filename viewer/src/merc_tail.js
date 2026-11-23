@@ -283,7 +283,7 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
       // reaparece em cima do inimigo: flash + imagens residuais subindo do chao ate ele
       r.q.push({t:U_AIR,fn:()=>{BL.forEach(b=>{b.pt=null;b.hist.length=0});act.x=TG.x;act.z=TG.z-.4;act.y=U_H;act.yaw=0;act.vis=true;setClipRaw(CI['Jump Spiral 4 Loop'],0);blendDur=.03;
         for(let q=0;q<6;q++)addGhost(skFromClip(CI['Jump Spiral 4 Loop'],6),{life:.28+q*.04,mv:.1+q*.02,col:q%2?ICE_C:FIRE_C,a:.55-q*.04,A:{x:TG.x+(q%2?.5:-.5)*(q/6),y:U_H*(q/7),z:TG.z-.4,yaw:0},to:{x:TG.x,y:U_H,z:TG.z-.4}});
-        flash(.5,'#ffffff');shake(.25);SFX.rise(.6);SFX.ping();SFX.swish(1.6);foc.x=TG.x+.5;foc.z=(TG.z-1.2)*.9;foc.y=.62+U_H*.88;
+        flash(.5,'#ffffff');shake(.25);SFX.rise(.6);SFX.ping();SFX.swish(1.6);foc.x=TG.x+.5;foc.z=TG.z-1.2;foc.y=.5+U_H*.8;
         const cc=[act.x,act.y+.9,act.z];arc(cc,.8,0,6.28,.06,.3,WH,{grow:.06,a:.9});arc(cc,.6,.4,5.4,.035,.7,FIRE_C,{grow:.2});arc(cc,.6,3.54,5.4,.035,.7,ICE_C,{grow:.2});
         r.lines.push(line([TG.x,0,TG.z-.4],[TG.x,U_H+.8,TG.z-.4],.06,.45,WH,{grow:.03,a:.8}),line([TG.x,0,TG.z],[TG.x,8,TG.z],.025,3,WH,{grow:.06,a:.3}));
         burst(cc,34,4.5,.04,FIRE_C,.5,-1);burst(cc,34,4.5,.04,ICE_C,.5,-1)}});
@@ -370,8 +370,8 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uCam-vP);vec3 L=normalize(vec3
     if(TG.fade>0){TG.vis=Math.min(1,TG.vis+dt*1.2);if(TG.vis>=1)TG.fade=0}}
   // camera: segue o ator
   const foc={x:0,y:.5,z:0};
-  function camStep(dt,dts){dts=dts==null?dt:dts;const aut=cam.auto!==false,ult=aut&&run&&run.id==='ult',mid=aut&&run&&TG.on&&!ult;const tx=ult?(act.vis&&act.y>.3?act.x:TG.x):(mid?(act.x+TG.x)*.5:act.x),tz=ult?TG.z*(run.el<1.4?.5:.7):(mid?(act.z+TG.z)*.5:act.z);
-    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1)+clp(act.y*.5,0,3);if(ult){ty=.62+clp(act.y*.88,0,3.8)}
+  function camStep(dt,dts){dts=dts==null?dt:dts;const aut=cam.auto!==false,ult=aut&&run&&run.id==='ult',mid=aut&&run&&TG.on&&!ult;const tx=ult?(act.vis&&act.y>.3?act.x:TG.x):(mid?(act.x+TG.x)*.5:act.x),tz=ult?(act.vis&&act.y>.3?act.z:TG.z*(run.el<1.4?.5:.7)):(mid?(act.z+TG.z)*.5:act.z);
+    const py=W[PEL*16+13];let ty=.52+clp((py-.45)*.55,-.1,1)+clp(act.y*.5,0,3);if(ult){ty=.5+clp(act.y*.8,0,3.6)}
     const k=clp(dt*7,0,1);foc.x+=(tx-foc.x)*k;foc.z+=(tz-foc.z)*k;foc.y+=(ty-foc.y)*k;
     CAMF.zoom+=(CAMF.zt-CAMF.zoom)*clp(dt*6,0,1);CAMF.shake*=Math.pow(.003,dts);CAMF.flash*=Math.pow(.0008,dt);CAMF.roll*=Math.pow(.05,dts);
     dimEl.style.opacity=String(clp(CAMF.dim,0,1));const fl=$e('flash');if(fl){fl.style.opacity=String(clp(CAMF.flash,0,1));fl.style.background=CAMF.flashC}}
