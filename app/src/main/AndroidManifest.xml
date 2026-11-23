@@ -23,6 +23,19 @@
         </activity>
 
         <activity
+            android:name=".GuerreiroActivity"
+            android:exported="true"
+            android:label="Guerreiro Arena"
+            android:screenOrientation="sensorLandscape"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:screenOrientation="sensorLandscape" />

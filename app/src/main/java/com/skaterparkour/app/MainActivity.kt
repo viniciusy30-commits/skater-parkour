@@ -48,6 +48,22 @@ class MainActivity : AppCompatActivity() {
             rightMargin = dp(76); topMargin = dp(14)
         })
 
+        // atalho para a Arena do Guerreiro
+        val arena = android.widget.TextView(this).apply {
+            text = "⚔ Arena"
+            setTextColor(0xFFF3DFB0.toInt())
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat(); setColor(0xAA1B1712.toInt()); setStroke(dp(1), 0x66FFD27A)
+            }
+            setOnClickListener { startActivity(Intent(this@MainActivity, GuerreiroActivity::class.java)) }
+        }
+        root.addView(arena, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40), Gravity.TOP or Gravity.END).apply {
+            rightMargin = dp(132); topMargin = dp(17)
+        })
+
         setContentView(root)
 
         // entrada suave

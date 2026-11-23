@@ -32,6 +32,10 @@ android {
         }
     }
 
+    androidResources {
+        noCompress += listOf("bin", "jpg", "html")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,4 +50,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.webkit:webkit:1.11.0")
 }

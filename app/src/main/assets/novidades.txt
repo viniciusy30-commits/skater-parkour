@@ -1,3 +1,12 @@
+#id 2026-11-22-a
+#titulo Arena do Guerreiro
+- Novo modo: Arena do Guerreiro, com o guerreiro de dois machados, todas as skills, efeitos, falas e sons
+- Abre pelo botão "⚔ Arena" no topo da tela ou pelo ícone "Guerreiro Arena" no celular
+- Andar, correr, pular, rolar e mirar no boneco (botão Mirar trava a câmera e o corpo no alvo, com passos laterais)
+- Ataque básico: cada toque faz o próximo golpe do combo, com recarga de 1 segundo
+- Skill 4: segure o botão para levantar o machado por até 5 s e arraste para mirar; solte para arremessar
+- Arena de batalha nova com chão e paredes de verdade, e o boneco de treino (botão Boneco coloca ele na sua frente)
+
 #id 2026-11-20-e
 #titulo Subidas, descidas e pulos corrigidos
 - Subir em degraus, caixas e paredes: o personagem não volta mais para o chão depois de subir, ele fica em cima do obstáculo
