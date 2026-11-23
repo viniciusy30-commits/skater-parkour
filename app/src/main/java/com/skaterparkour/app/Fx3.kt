@@ -352,13 +352,13 @@ void main(){
     /** v79: impacto da Ultimate no chão */
     fun ultSlam(c: V, P0: Float) {
         val P = if (P0 == 0f) 1f else P0
-        val g = v3(c[0], 0f, c[2]); val mP = min(P, 1.6f)
-        spr(g, 1.1f * P, GM, 1.2f * P, floatArrayOf(1f, .05f, .02f, .7f)) { gd = true; gy = .026f; s1 = 2.2f * P; ease = easeO; env = { q -> 1 - sstep(.2f, 1f, q) } }
-        spr(g, .5f, GM, .5f * P, floatArrayOf(1f, .25f, .18f, .5f)) { gd = true; gy = .03f; s1 = .9f * P; env = { q -> 1 - q } }
+        val gp = v3(c[0], 0f, c[2]); val mP = min(P, 1.6f)
+        spr(gp, 1.1f * P, GM, 1.2f * P, floatArrayOf(1f, .05f, .02f, .7f)) { gd = true; gy = .026f; s1 = 2.2f * P; ease = easeO; env = { q -> 1 - sstep(.2f, 1f, q) } }
+        spr(gp, .5f, GM, .5f * P, floatArrayOf(1f, .25f, .18f, .5f)) { gd = true; gy = .03f; s1 = .9f * P; env = { q -> 1 - q } }
         scorchS(c, 1.1f * P, 3, 5f)
-        spr(g, .55f, RING, .3f, floatArrayOf(1f, .08f, .04f, 1f)) { gd = true; gy = .04f; s1 = 3 * P; ease = easeO; rot = rnd(0f, 6f); env = { q -> 1 - q * q } }
-        spr(g, .8f, LRING, .3f, floatArrayOf(1f, .15f, .08f, .8f)) { gd = true; gy = .045f; delay = .06f; s1 = 2.4f * P; ease = easeO; rotv = 3f; env = { q -> 1 - q } }
-        spr(g, .45f, TWIRL + 2, .6f * P, floatArrayOf(1f, .12f, .06f, .9f)) { gd = true; gy = .05f; s1 = 1.8f * P; rotv = -9f; env = { q -> 1 - q } }
+        spr(gp, .55f, RING, .3f, floatArrayOf(1f, .08f, .04f, 1f)) { gd = true; gy = .04f; s1 = 3 * P; ease = easeO; rot = rnd(0f, 6f); env = { q -> 1 - q * q } }
+        spr(gp, .8f, LRING, .3f, floatArrayOf(1f, .15f, .08f, .8f)) { gd = true; gy = .045f; delay = .06f; s1 = 2.4f * P; ease = easeO; rotv = 3f; env = { q -> 1 - q } }
+        spr(gp, .45f, TWIRL + 2, .6f * P, floatArrayOf(1f, .12f, .06f, .9f)) { gd = true; gy = .05f; s1 = 1.8f * P; rotv = -9f; env = { q -> 1 - q } }
         val nr = (10 * mP).roundToInt()
         for (i in 0 until nr) {
             val a = i.toFloat() / nr * 6.283f + rnd(-.2f, .2f); val sp = rnd(5f, 9f) * P
