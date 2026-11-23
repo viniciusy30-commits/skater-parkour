@@ -1,3 +1,13 @@
+#id 2026-11-23-a
+#titulo Efeitos idênticos ao visualizador + Skill 4 andando
+- Todos os efeitos agora são os mesmos do visualizador HTML, portados para nativo: lâmina em X da Skill 1, guarda dourada, aparar e onda 360° da Skill 2, impacto de terra com onda de choque da Skill 3, corrente de energia com elos, hélice e selos da Skill 4, aura de sangue e pancadas vermelhas da Ultimate
+- Rastro das lâminas igual ao do HTML (curvo, com brilho e faíscas), e vermelho na Ultimate
+- Acerto de verdade pelas lâminas: impacto com faíscas, sangue espirrando, gotas, poças e feridas no boneco
+- O boneco de treino agora é o mesmo modelo do HTML, balançando quando apanha
+- Shader do personagem e dos machados igual ao do HTML (runas vermelhas na Ultimate, brilho dourado nas skills)
+- Skill 4: enquanto segura, as pernas andam de verdade (dá para andar devagar mirando) e o tronco respira com o machado erguido
+- Desempenho: o 3D é desenhado numa resolução interna otimizada para rodar liso
+
 #id 2026-11-22-b
 #titulo Guerreiro nativo: campo de treino
 - O jogo agora é só do Guerreiro, tudo nativo (sem página HTML dentro do app). Parkour e os outros personagens foram removidos

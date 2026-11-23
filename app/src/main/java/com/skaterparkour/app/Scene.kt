@@ -147,19 +147,24 @@ uniform vec3 uCtr; uniform vec3 uExt; uniform mat4 uVP; uniform mat4 uM;
 out vec2 vUV; out vec3 vN; out vec3 vP;
 void main(){ vec4 w=uM*vec4(uCtr+aPos.xyz*uExt,1.); vP=w.xyz; vN=mat3(uM)*normalize(aNrm.xyz); vUV=aUV; gl_Position=uVP*w; }"""
 
+    /** shader do personagem e dos machados — igual ao FS_L do visualizador HTML */
     const val TEX_FS = """#version 300 es
 precision highp float;
-in vec2 vUV; in vec3 vN; in vec3 vP; uniform sampler2D uTex; uniform vec3 uCam; uniform float uMetal, uRune, uRim, uTm; uniform vec3 uRC;
+in vec2 vUV;in vec3 vN;in vec3 vP;uniform sampler2D uTex;uniform vec3 uCam;uniform float uMetal;uniform float uRune,uTm,uRim;uniform vec3 uRC;
 out vec4 o;
-""" + LIGHT + """
-void main(){ vec3 N=normalize(vN); if(!gl_FrontFacing) N=-N; vec3 V=normalize(uCam-vP);
- vec3 t0=texture(uTex,vUV).rgb; vec3 al=pow(t0,vec3(2.2));
- vec3 c=light(al,N,V,uMetal,1.);
- if(uRune>0.){ float mx=max(t0.r,max(t0.g,t0.b)); float rm=smoothstep(.04,.14,t0.r-t0.b)*smoothstep(.22,.42,mx);
-   float pu=.75+.25*sin(uTm*9.+vP.y*6.); c=mix(c,uRC*dot(c,vec3(.33))*.4,rm*uRune*.8); c+=uRC*rm*uRune*pu*2.4; }
+vec3 fogc(vec3 c, vec3 P, vec3 E){ float d=length(P-E); vec3 f=vec3(.47,.47,.52); return mix(c,f,smoothstep(28.,150.,d)*.85); }
+void main(){vec3 N=normalize(vN);if(!gl_FrontFacing)N=-N;vec3 V=normalize(uCam-vP);
+ vec3 al=pow(texture(uTex,vUV).rgb,vec3(2.2));
+ vec3 L1=normalize(vec3(.5,.9,.7)),L2=normalize(vec3(-.8,.3,-.5));
+ float d1=max(dot(N,L1),0.),d2=max(dot(N,L2),0.);
+ vec3 hemi=mix(vec3(.38,.36,.35),vec3(.62,.64,.70),N.y*.5+.5);
+ vec3 c=al*(hemi+vec3(1.0,.96,.9)*d1*.75+vec3(.35,.42,.6)*d2*.3);
+ vec3 H=normalize(L1+V);c+=vec3(.4)*pow(max(dot(N,H),0.),40.)*d1*(.06+uMetal);
+ if(uRune>0.){vec3 t0=texture(uTex,vUV).rgb;float mx=max(t0.r,max(t0.g,t0.b));float rm=smoothstep(.04,.14,t0.r-t0.b)*smoothstep(.22,.42,mx);
+  float pu=.75+.25*sin(uTm*9.+vP.y*6.);c=mix(c,uRC*dot(c,vec3(.33))*.4,rm*uRune*.8);c+=uRC*rm*uRune*pu*2.4;}
  c+=uRC*uRim*(.25+.75*pow(1.-max(dot(N,V),0.),2.))*(.8+.2*sin(uTm*14.));
  c=fogc(c,vP,uCam);
- o=vec4(pow(c,vec3(1./2.2)),1.); }"""
+ o=vec4(pow(c,vec3(1./2.2)),1.);}"""
 
     const val COL_VS = """#version 300 es
 precision highp float;

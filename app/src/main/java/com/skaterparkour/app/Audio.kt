@@ -26,7 +26,7 @@ class Audio(private val ctx: Context) {
     val SFX = listOf(
         "swing1", "swing2", "swing3", "ding", "parry", "hit_body", "s1_charge", "s2_guard", "s2_wave", "s2_thud",
         "s3_rise", "s3_slam", "s3_boom", "chain_throw", "chain_snap", "chain_pull", "axe_whir", "ult_roar", "ult_aura",
-        "ult_slam", "ult_debris", "ult_final", "impact", "s3_spin", "axe_hit1", "axe_hit2", "axe_hit3", "s1_launch", "s1_impact"
+        "ult_slam", "ult_debris", "ult_final", "impact", "s3_spin", "axe_hit1", "axe_hit2", "axe_hit3", "s1_launch", "s1_impact", "chain_snap_o"
     )
 
     init {
@@ -38,13 +38,17 @@ class Audio(private val ctx: Context) {
         }
     }
 
-    /** Toca um efeito. [delay] em segundos. */
-    fun sfx(k: String, g: Float = 1f, rate: Float = 1f, delay: Float = 0f, loopKey: String? = null) {
+    /** Toca um efeito. [delay] em segundos; [fadeAt]/[fadeLen] fazem o som sumir aos poucos. */
+    fun sfx(k: String, g: Float = 1f, rate: Float = 1f, delay: Float = 0f, loopKey: String? = null, fadeAt: Float = -1f, fadeLen: Float = 1f) {
         val id = ids[k] ?: return
         val run = Runnable {
-            val v = clampf(g * (if (voiceOn) 0.6f else 1f), 0f, 1f)
+            val v = clampf(g * (if (voiceOn) 0.55f else 1f), 0f, 1f)
             val s = pool.play(id, v, v, 1, 0, clampf(rate, 0.5f, 2f))
             if (loopKey != null) loops[loopKey] = s
+            if (fadeAt >= 0f) {
+                val steps = 10
+                for (i in 1..steps) main.postDelayed({ val vv = v * (1f - i / steps.toFloat()); pool.setVolume(s, vv, vv) }, ((fadeAt + fadeLen * i / steps) * 1000).toLong())
+            }
         }
         if (delay > 0f) main.postDelayed(run, (delay * 1000).toLong()) else main.post(run)
     }

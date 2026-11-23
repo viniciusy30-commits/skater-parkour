@@ -104,22 +104,33 @@ class Anims(ctx: Context) {
     }
 }
 
-/** Saída final da animação com transição suave (crossfade) a partir da última pose mostrada. */
-class Animator {
+/** Saída final da animação com transição suave (crossfade). Como no HTML, o clipe anterior continua andando durante a mistura. */
+class Animator(private val anims: Anims) {
     val out = Pose()
     private val snap = Pose()
     private var fade = 1f
     private var fadeDur = 0.2f
+    private var prevClip: Clip? = null
+    private var prevT = 0f
 
     /** Congela a pose atual e mistura para a próxima em [dur] segundos. */
     fun transition(dur: Float) {
+        prevClip = null
         if (dur <= 0f) { fade = 1f; return }
         snap.copy(out); fade = 0f; fadeDur = dur
+    }
+
+    /** Mistura a partir de um clipe que segue tocando (setClip do HTML). */
+    fun transitionClip(c: Clip, t: Float, dur: Float) {
+        if (dur <= 0f) { fade = 1f; prevClip = null; return }
+        snap.copy(out); prevClip = c; prevT = t; fade = 0f; fadeDur = dur
     }
 
     fun apply(target: Pose, dt: Float) {
         if (fade < 1f) {
             fade = minOf(1f, fade + dt / fadeDur)
+            val pc = prevClip
+            if (pc != null) anims.sample(pc, minOf(prevT + fade * fadeDur, pc.dur - 1e-3f), false, snap)
             Anims.blend(snap, target, smooth(fade), out)
         } else out.copy(target)
     }

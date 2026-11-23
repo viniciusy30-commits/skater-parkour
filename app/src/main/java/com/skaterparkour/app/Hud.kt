@@ -150,11 +150,29 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
             c.drawText(err ?: r.loadMsg, width / 2f, height / 2f + d(22f), pText)
             postInvalidateOnAnimation(); return
         }
+        drawOverlay(c, g)
         drawTarget(c, g)
         drawTexts(c, g)
         drawJoy(c)
         for (b in btns) drawBtn(c, b, g)
         postInvalidateOnAnimation()
+    }
+
+    private var vigShader: RadialGradient? = null
+    private var vigW = 0
+    /** clarão vermelho e vinheta da Ultimate (flash/vig do HTML) */
+    private fun drawOverlay(c: Canvas, g: Game) {
+        val fa = min(.4f, g.flashA * .6f)
+        if (fa > .01f) { pFill.shader = null; pFill.color = Color.argb((fa * 255).toInt(), 255, 42, 26); c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), pFill) }
+        val v = g.vigA * g.vigA * (3 - 2 * g.vigA)
+        if (v > .01f) {
+            if (vigShader == null || vigW != width) {
+                vigW = width
+                vigShader = RadialGradient(width / 2f, height / 2f, hypot(width.toFloat(), height.toFloat()) * .55f,
+                    intArrayOf(0x00000000, 0x00000000, 0xC8780000.toInt()), floatArrayOf(0f, .55f, 1f), Shader.TileMode.CLAMP)
+            }
+            pFill.shader = vigShader; pFill.alpha = (v * 255).toInt(); c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), pFill); pFill.shader = null; pFill.alpha = 255
+        }
     }
 
     private fun project(x: Float, y: Float, z: Float, out: FloatArray): Boolean {
@@ -171,14 +189,14 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         pText.textSize = d(13f); pText.color = 0xFFF1E3C4.toInt()
         c.drawText("Boneco de Treino", width / 2f, y - d(6f), pText)
         pFill.color = 0xB0100C0A.toInt(); c.drawRoundRect(x - d(2f), y - d(2f), x + w + d(2f), y + h + d(2f), d(4f), d(4f), pFill)
-        val hp = g.dHp
+        val hp = clampf(g.dHp / 100f, 0f, 1f)
         pFill.shader = LinearGradient(x, y, x, y + h, 0xFFC8362A.toInt(), 0xFF6E1410.toInt(), Shader.TileMode.CLAMP)
         c.drawRoundRect(x, y, x + w * hp, y + h, d(3f), d(3f), pFill); pFill.shader = null
         pFill.color = 0x30FFFFFF; c.drawRect(x, y, x + w * hp, y + h * .42f, pFill)
         pStroke.color = goldD; pStroke.strokeWidth = d(1.4f)
         c.drawRoundRect(x - d(2f), y - d(2f), x + w + d(2f), y + h + d(2f), d(4f), d(4f), pStroke)
         pText.textSize = d(10f); pText.color = 0xFFFFFFFF.toInt()
-        c.drawText(if (g.dummyAlive()) "${(hp * 100).roundToInt()}%" else "Derrotado", width / 2f, y + h - d(3.5f), pText)
+        c.drawText("${(hp * 100).roundToInt()}%", width / 2f, y + h - d(3.5f), pText)
         if (g.dummyStunned()) { pText.color = gold; c.drawText("ATORDOADO", width / 2f, y + h + d(14f), pText) }
     }
 

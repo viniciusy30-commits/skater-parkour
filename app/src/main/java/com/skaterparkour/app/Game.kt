@@ -4,23 +4,27 @@ import kotlin.math.*
 import kotlin.random.Random
 
 /**
- * Lógica do campo de treino: guerreiro (movimento, ataques, skills), boneco, câmera.
- * Unidades do mundo em metros. O modelo do guerreiro tem 1 unidade = 1,8 m.
+ * Campo de treino — lógica do jogo. As habilidades seguem exatamente as linhas do tempo do visualizador HTML
+ * (mesmos clipes, tempos, efeitos FX3, rastro TRL, sangue BLD, ondas de choque e sons).
+ * Mundo em metros; TRL/BLD/onda de choque usam o espaço "unidade" do HTML (metros / 1,8).
  */
-class Game(private val anims: Anims, private val skel: Skeleton, private val fx: Fx, private val audio: Audio) {
+class Game(private val anims: Anims, private val skel: Skeleton, val fx: Fx3, val trl: Trl, val bld: Bld, val sw: Sw, private val audio: Audio) {
     companion object {
         const val K = 1.8f
         val BSEG = arrayOf(floatArrayOf(0f, 1.15f), floatArrayOf(1.15f, 1.75f), floatArrayOf(1.75f, 2.55f), floatArrayOf(2.55f, 4.63f))
-        val BHITS = arrayOf(floatArrayOf(.48f, .98f), floatArrayOf(1.55f), floatArrayOf(2.18f), floatArrayOf(2.85f, 3.25f))
         val SKILLS = arrayOf("basic", "s1", "s2", "s3", "s4", "ult")
         val CD = floatArrayOf(1f, 6f, 10f, 12f, 12f, 60f)
-        // direções de strafe (ângulo relativo, + = esquerda do personagem)
         val STRAFE = arrayOf("front", "frontL45", "left", "backL45", "back", "backR45", "right", "frontR45")
+        val EDG = arrayOf(v3(-0.206f, 0.36f, 0f), v3(-0.206f, 0.76f, 0f), v3(0.241f, 0.36f, 0f), v3(0.241f, 0.76f, 0f))
+        val HP = v3(0f, .6f, 0f)
+        val C3T = floatArrayOf(.92f, 1.75f, 2.55f, 3.55f)
+        const val TREL = .25f; const val TFLY = .3f; const val THOLD = .12f; const val TPULL = .5f
+        val LOWER = (64..79).toList() + listOf(0, 1)
     }
 
     // ---------- jogador ----------
     val P = floatArrayOf(0f, 0f, 4.2f)
-    var yaw = PI.toFloat()
+    var yaw = PIf
     private var yawTarget = yaw
     private val vel = FloatArray(2)
     private var speedSm = 0f
@@ -28,132 +32,135 @@ class Game(private val anims: Anims, private val skel: Skeleton, private val fx:
     private var idleT = 0f
     var lock = false
     var time = 0f
-    private var hitstop = 0f
 
-    private enum class Mode { LOCO, ACT, ROLL, JUMP }
+    private enum class Mode { LOCO, SKILL, ROLL, JUMP, HURT }
     private var mode = Mode.LOCO
     private var modeT = 0f
     private var rollDir = 0f
     private var rollClip = "roll_front"
 
     // ---------- câmera ----------
-    var camYaw = PI.toFloat()
+    var camYaw = PIf
     var camPitch = .36f
     var camDist = 7.5f
     private var camDistSm = 7.5f
-    private val camTarget = FloatArray(3)
+    private val camTarget = floatArrayOf(0f, 1.2f, 4.2f)
     val eye = FloatArray(3)
     val look = FloatArray(3)
-    private var shakeA = 0f
+    var shakeA = 0f; var flashA = 0f; var vigA = 0f
 
-    // ---------- boneco ----------
-    val D = floatArrayOf(0f, 0f, 0f)
-    var dYaw = 0f
-    val dTilt = FloatArray(2); private val dTiltV = FloatArray(2)
-    var dHp = 1f
-    private val dHpMax = 1800f
-    private var dDead = -1f
-    private var dFall = 0f
-    private var dStun = 0f
-    private var dLastHit = -9f
-    private var dAtkT = 6f
-    private val dPushV = FloatArray(2)
-    var dFlash = 0f
+    // ---------- alvo ----------
+    var dHp = 100f
+    private var dAtkT = 7f
+    private var stunT = 0f
 
-    // ---------- ação (sequência de clipes) ----------
-    private class Seg(val clip: String, val start: Float, var end: Float, val blend: Float)
-    private class Ev(val t: Float, val f: () -> Unit)
-    private class Tk(val a: Float, val b: Float, val f: (Float, Float) -> Unit)
-    private inner class Act(val id: String, val segs: List<Seg>, val evs: List<Ev>, val tks: List<Tk>, val endBlend: Float = .28f) {
-        var t = 0f; var si = 0; var segT0 = 0f; var done = false
-        fun segDur(s: Seg) = (if (s.end < 0f) anims[s.clip].dur else s.end) - s.start
+    // ---------- habilidade em execução (igual ao skRun do HTML) ----------
+    private class Seg(val clip: String, val start: Float = 0f, val end: Float = 0f, val blend: Float = 0f)
+    private abstract class Ev
+    private class At(val at: Float, val fn: (Float) -> Unit) : Ev()
+    private class Rg(val from: Float, val to: Float, val fn: (Float, Float) -> Unit) : Ev()
+    private inner class SkRun(val id: String, val seq: List<Seg>, val ev: List<Ev>) {
+        var idx = 0; val offs = FloatArray(seq.size + 1); var prev = -1f
+        init { for (i in seq.indices) { val c = anims[seq[i].clip]; offs[i + 1] = offs[i] + (if (seq[i].end > 0f) seq[i].end else c.dur) - seq[i].start } }
     }
-    private var act: Act? = null
-    private val target = Pose(); private val tmpA = Pose(); private val tmpB = Pose(); private val tmpC = Pose(); private val tmpD = Pose()
-    val animator = Animator()
+    private var skRun: SkRun? = null
+    private var t = 0f                 // tempo do clipe atual
+    private var cur = "idle_00"
+    private var hitstop = 0f
+    private var tsCur = 1f
+    private val target = Pose(); private val tmpA = Pose(); private val tmpB = Pose(); private val tmpC = Pose(); private val tmpD = Pose(); private val tmpE = Pose()
+    val animator = Animator(anims)
 
-    // efeitos do personagem
-    var red = 0f          // 0..1 runas vermelhas (Ultimate)
-    var gold = 0f         // 0..1 brilho dourado nos machados
-    private var trailsOn = 0f
-    private var trailRed = false
-    private var auraT = 0f
-    private var basicK = 0
-    private var lastBasic = -9f
-    private var basicEnd = -9f
+    var red = 0f; var gold = 0f
+    private var s2Push = 0f; private var s2Lunge = 0f; private var s2Home: V? = null
+    private var c3prev = -1f; private var sktPrev = -1f
+    private var bqI = 0; private var bqQ = 0; private var bqLast = -9f; private var bqEnd = -9f
+    private var bN = 0; private var bNext = 2 + Random.nextInt(2)
 
-    // Skill 4 (machado arremessado)
-    private enum class S4 { OFF, HOLD, WINDUP, FLY, STUCK, PULL, BACK }
-    private var s4 = S4.OFF
-    private var s4T = 0f
-    private var s4Hold = 0f
+    // segurar Skill 4
+    private var holdOn = false; private var holdFreeze = false; private var holdEl = 0f; private var holdMiss = false
     var aimYaw = 0f
-    val axePos = FloatArray(3)
-    private val axeDir = FloatArray(2)
-    private var axeDist = 0f
-    private var axeSpin = 0f
-    private var axeHit = false
-    private val pullFrom = FloatArray(3)
-    private val dPullFrom = FloatArray(2)
-    val axeM = FloatArray(16)
-    var axeFlying = false
+    // arremesso (THR)
+    private var thrOn = 0; private var thrPh = 0; private val thrM = FloatArray(16); private var thrGlow = 0f
+    private var thrP0 = v3(0f, 0f, 0f); private var thrT = v3(0f, 0f, 0f); private var thrDir = v3(0f, 0f, 1f); private var thrAx = v3(1f, 0f, 0f)
+    private var thrR0 = FloatArray(9); private var thrRh = FloatArray(9); private var thrTh = 0f; private var thrTc = 0f
 
     // cooldowns
     val cdReady = FloatArray(6)
     var noCd = false
 
-    // textos de dano
     class Txt(val x: Float, val y: Float, val z: Float, val v: Int, val crit: Boolean, val col: Int, var t: Float = 0f)
     val texts = ArrayList<Txt>()
 
     // matrizes
     val charM = FloatArray(16)
     val wM = arrayOf(FloatArray(16), FloatArray(16))
+    val axeM = FloatArray(16)
+    val axeFlying get() = thrOn == 1
     private val wTmp = FloatArray(16)
-    private val v3 = FloatArray(3); private val v3b = FloatArray(3)
-    val blades = arrayOf(FloatArray(3), FloatArray(3))
-    val handR = FloatArray(3)
+    private val wU = arrayOf(FloatArray(16), FloatArray(16))
+    private val tips = arrayOf(v3(0f, 1f, 0f), v3(0f, 1f, 0f))
+    private val blades = arrayOf(v3(0f, 0f, 0f), v3(0f, 0f, 0f))
     private val ev = ArrayList<String>()
     private val camIn = FloatArray(3)
     private var entered = false
 
+    // rastro (vfxTick)
+    private class SwG { var on = false; var pk = 0f; var kd = 0f }
+    private val swG = arrayOf(SwG(), SwG())
+    private val prevTip = arrayOfNulls<Array<V>>(2)
+    private var vLastT = 0f; private var vLastCur = ""
+
     fun cdLeft(i: Int) = if (noCd) 0f else max(0f, cdReady[i] - time)
+    fun dummyStunned() = stunT > 0f
+    val D: V get() = v3(bld.E[0] * K, 0f, bld.E[2] * K)
+
+    init {
+        bld.E = v3(0f, 0f, 0f)
+        bld.onImpact = { c, d, k -> onImpact(c, d, k) }
+    }
 
     // =====================================================================
     fun update(dtRaw: Float) {
-        val dt = min(dtRaw, 1f / 20f)
+        val dt = min(dtRaw, 1f / 15f)
         time += dt
-        if (!entered && time > .8f) { entered = true; audio.voice("enter") }
+        if (!entered && time > .6f) { entered = true; audio.voice("enter") }
         Input.take(camIn, ev)
         handleCam()
         for (e in ev) handleEvent(e)
         ev.clear()
+        if (holdFreeze) holdEl += dt
 
-        // hitstop: congela a animação por instantes no impacto
-        val adt = if (hitstop > 0f) { hitstop -= dt; dt * .06f } else dt
+        // tempo da animação (hitstop e congelamento da Skill 4)
+        tsCur = if (holdFreeze) 0f else if (hitstop > 0f) { hitstop -= dt; .06f } else 1f
+        val run = skRun
+        if (run != null) {
+            t += dt * tsCur
+            val c = anims[cur]
+            val it = run.seq[run.idx]
+            if ((it.end > 0f && t >= it.end) || t >= c.dur) skClipEnd()
+        }
 
         when (mode) {
-            Mode.LOCO -> loco(dt)
+            Mode.LOCO -> loco(dt, target)
             Mode.ROLL -> roll(dt)
             Mode.JUMP -> jump(dt)
-            Mode.ACT -> if (s4 == S4.OFF) runAct(adt, dt)
+            Mode.HURT -> hurt(dt)
+            Mode.SKILL -> skillPose(dt)
         }
-        s4Tick(dt)
-        // vira suavemente
-        yaw += wrapA(yawTarget - yaw) * min(1f, dt * (if (mode == Mode.ACT) 14f else 11f))
+        yaw += wrapA(yawTarget - yaw) * min(1f, dt * (if (mode == Mode.SKILL) 16f else 11f))
 
-        animator.apply(target, adt)
+        animator.apply(target, if (skRun != null && !holdOn) dt * tsCur else dt)
         skel.solve(animator.out)
         M4.trs(charM, P[0], P[1], P[2], yaw, K)
-        for (s in 0 until 2) { skel.weapon(s, wTmp); M4.mul(wM[s], charM, wTmp) }
-        M4.mul(wTmp, 0, charM, 0, skel.world, 42 * 16); M4.xf(wTmp, 0, 0f, 0f, 0f, handR)
-        for (s in 0 until 2) M4.xf(wM[s], 0, -0.206f, .76f, 0f, blades[s])
+        for (s in 0 until 2) {
+            skel.weapon(s, wTmp); M4.mul(wM[s], charM, wTmp)
+            for (i in 0 until 16) wU[s][i] = if (i % 4 == 3) wM[s][i] else wM[s][i] / K
+        }
 
-        updateTrails(dt)
-        updateDummy(dt)
-        updateFx(dt)
+        vfxTick()
+        skTick(dt)
         updateCamera(dt)
-        // textos
         synchronized(texts) { texts.forEach { it.t += dt }; texts.removeAll { it.t > 1.1f } }
     }
 
@@ -169,7 +176,7 @@ class Game(private val anims: Anims, private val skel: Skeleton, private val fx:
             "basic" -> basicPress()
             "s1", "s2", "s3", "ult" -> useSkill(e)
             "s4down" -> s4Down()
-            "s4up" -> s4Release()
+            "s4up" -> s4Up()
             "roll" -> rollPress()
             "jump" -> jumpPress()
             "lock" -> lock = !lock
@@ -177,36 +184,31 @@ class Game(private val anims: Anims, private val skel: Skeleton, private val fx:
         }
     }
 
-    private fun canAct() = mode == Mode.LOCO && s4 == S4.OFF
-
+    private fun canAct() = skRun == null && mode != Mode.ROLL && mode != Mode.JUMP
     private fun ready(i: Int) = noCd || time >= cdReady[i]
     private fun startCd(i: Int) { cdReady[i] = time + CD[i] }
-
-    private fun distD() = hypot(D[0] - P[0], D[2] - P[2])
-    private fun yawToD() = atan2(D[0] - P[0], D[2] - P[2])
-    private fun dAlive() = dDead < 0f
-
-    private fun faceTarget(force: Boolean = false) {
-        if (dAlive() && (lock || force || distD() < 7f)) { yawTarget = yawToD() }
-    }
+    private fun distD(): Float { val d = D; return hypot(d[0] - P[0], d[2] - P[2]) }
+    private fun yawToD(): Float { val d = D; return atan2(d[0] - P[0], d[2] - P[2]) }
+    private fun faceTarget() { if (lock || distD() < 4.5f) { yaw = yawToD(); yawTarget = yaw } }
 
     // ---------------- locomoção ----------------
     private fun stickDir(): FloatArray? {
         val jx = Input.jx; val jy = Input.jy
         val m = hypot(jx, jy)
         if (m < .12f) return null
-        // frente da câmera e direita da câmera no chão
-        val fx = sin(camYaw); val fz = cos(camYaw)
-        val rx = -fz; val rz = fx
-        val dx = fx * jy + rx * jx; val dz = fz * jy + rz * jx
+        val fx0 = sin(camYaw); val fz = cos(camYaw)
+        val rx = -fz; val rz = fx0
+        val dx = fx0 * jy + rx * jx; val dz = fz * jy + rz * jx
         return floatArrayOf(atan2(dx, dz), min(1f, (m - .12f) / .8f))
     }
 
-    private fun loco(dt: Float) {
+    /** Locomoção em blend tree. strafeYaw != null: anda de lado olhando para essa direção. */
+    private fun loco(dt: Float, out: Pose, strafeYaw: Float? = null, maxSp: Float = -1f) {
         val sd = stickDir()
-        val locked = lock && dAlive()
-        val maxV = if (locked) 4.1f else 5.2f
-        val want = if (sd != null) (if (locked) .85f else 1f) + (maxV - (if (locked) .85f else 1f)) * sd[1] * sd[1] else 0f
+        val locked = strafeYaw != null || lock
+        val maxV = if (maxSp > 0f) maxSp else if (locked) 4.1f else 5.2f
+        val minV = if (locked) .85f else 1f
+        val want = if (sd != null) min(maxV, minV + (maxV - minV) * sd[1] * sd[1]) else 0f
         speedSm += (want - speedSm) * min(1f, dt * (if (want > speedSm) 7f else 10f))
         val dir = sd?.get(0) ?: atan2(vel[0], vel[1])
         if (speedSm > .02f) {
@@ -215,604 +217,525 @@ class Game(private val anims: Anims, private val skel: Skeleton, private val fx:
         } else { vel[0] = 0f; vel[1] = 0f }
         move(vel[0] * dt, vel[1] * dt)
         val sp = hypot(vel[0], vel[1])
-
-        if (locked) yawTarget = yawToD() else if (sd != null && sp > .2f) yawTarget = dir
+        if (strafeYaw != null) yawTarget = strafeYaw
+        else if (lock) yawTarget = yawToD() else if (sd != null && sp > .2f) yawTarget = dir
 
         idleT += dt
         anims.sample(anims["idle_00"], idleT, true, tmpA)
-        if (sp < .05f) { target.copy(tmpA); return }
+        if (sp < .05f) { out.copy(tmpA); return }
         if (!locked) {
-            val walk = anims["walk_front"]; val run = anims["move_run_front"]
+            val walk = anims["walk_front"]; val runC = anims["move_run_front"]
             val wr = clampf((sp - 1.04f) / (5.39f - 1.04f), 0f, 1f)
-            val cyc = lerpf(walk.dur, run.dur, wr)
+            val cyc = lerpf(walk.dur, runC.dur, wr)
             phase = (phase + dt / cyc * max(sp / lerpf(1.04f, 5.39f, wr), .55f)) % 1f
             anims.sample(walk, phase * walk.dur, true, tmpB)
-            anims.sample(run, phase * run.dur, true, tmpC)
+            anims.sample(runC, phase * runC.dur, true, tmpC)
             Anims.blend(tmpB, tmpC, wr, tmpB)
         } else {
             val rel = wrapA(atan2(vel[0], vel[1]) - yaw)
-            var a = rel / (PI.toFloat() / 4f); if (a < 0) a += 8f
+            var a = rel / (PIf / 4f); if (a < 0) a += 8f
             val i0 = a.toInt() % 8; val i1 = (i0 + 1) % 8; val w = a - a.toInt()
             val wr = clampf((sp - .85f) / (4.1f - .85f), 0f, 1f)
             val cyc = lerpf(anims["move_walk_strafe_front"].dur, anims["move_run_strafe_front"].dur, wr)
             phase = (phase + dt / cyc * max(sp / lerpf(.85f, 4.1f, wr), .55f)) % 1f
-            fun dirPose(i: Int, out: Pose) {
+            fun dirPose(i: Int, o: Pose) {
                 val cw = anims["move_walk_strafe_" + STRAFE[i]]; val cr = anims["move_run_strafe_" + STRAFE[i]]
-                anims.sample(cw, phase * cw.dur, true, tmpD); anims.sample(cr, phase * cr.dur, true, out)
-                Anims.blend(tmpD, out, wr, out)
+                anims.sample(cw, phase * cw.dur, true, tmpD); anims.sample(cr, phase * cr.dur, true, o)
+                Anims.blend(tmpD, o, wr, o)
             }
             dirPose(i0, tmpB); dirPose(i1, tmpC)
             Anims.blend(tmpB, tmpC, w, tmpB)
         }
-        val wIdle = 1f - clampf(sp / .9f, 0f, 1f)
-        Anims.blend(tmpB, tmpA, wIdle, target)
+        Anims.blend(tmpB, tmpA, 1f - clampf(sp / .9f, 0f, 1f), out)
     }
 
     private fun move(dx: Float, dz: Float) {
         var nx = P[0] + dx; var nz = P[2] + dz
-        // não atravessa o boneco
-        val ex = nx - D[0]; val ez = nz - D[2]; val de = hypot(ex, ez)
-        if (de < .75f && dAlive()) { nx = D[0] + ex / max(de, 1e-3f) * .75f; nz = D[2] + ez / max(de, 1e-3f) * .75f }
-        // limite do campo (cerca)
+        val d = D; val ex = nx - d[0]; val ez = nz - d[2]; val de = hypot(ex, ez)
+        if (de < .75f) { nx = d[0] + ex / max(de, 1e-3f) * .75f; nz = d[2] + ez / max(de, 1e-3f) * .75f }
         val r = hypot(nx, nz)
         if (r > 14.8f) { nx *= 14.8f / r; nz *= 14.8f / r }
         P[0] = nx; P[2] = nz
     }
 
     private fun rollPress() {
-        if (!(mode == Mode.LOCO || (mode == Mode.ACT && act?.id == "basic")) || s4 != S4.OFF) return
-        if (mode == Mode.ACT) { act = null }
+        if (!canAct() && skRun?.id != "basic") return
+        if (skRun != null) { skRun = null; trl.clear() }
         val sd = stickDir()
         rollDir = sd?.get(0) ?: yaw
         rollClip = "roll_front"
-        if (lock && dAlive()) {
+        if (lock) {
             val rel = wrapA(rollDir - yaw)
-            rollClip = when {
-                abs(rel) < PI.toFloat() / 4 -> "roll_front"
-                abs(rel) > 3 * PI.toFloat() / 4 -> "roll_back"
-                rel < 0 -> "roll_right"
-                else -> "roll_left"
-            }
+            rollClip = when { abs(rel) < PIf / 4 -> "roll_front"; abs(rel) > 3 * PIf / 4 -> "roll_back"; rel < 0 -> "roll_right"; else -> "roll_left" }
         } else { yawTarget = rollDir; yaw = rollDir }
         mode = Mode.ROLL; modeT = 0f
         animator.transition(.1f)
-        audio.sfx("swing2", .5f, .75f)
+        audio.sfx("swing2", .7f, .75f)
     }
 
     private fun roll(dt: Float) {
         modeT += dt
         val u = modeT / .62f
-        val sp = if (u < .85f) 5.4f * (1 - u * .6f) else 0f
+        val sp = if (u < .85f) 5.2f * (1 - u * .6f) else 0f
         move(sin(rollDir) * sp * dt, cos(rollDir) * sp * dt)
         anims.sample(anims[rollClip], modeT, false, target)
         if (modeT >= .62f) { mode = Mode.LOCO; animator.transition(.22f); vel[0] = 0f; vel[1] = 0f; speedSm = 0f }
     }
 
     private fun jumpPress() {
-        if (mode != Mode.LOCO || s4 != S4.OFF) return
+        if (!canAct()) return
         mode = Mode.JUMP; modeT = 0f; animator.transition(.12f)
-        audio.sfx("swing1", .4f, .8f)
+        audio.sfx("swing1", .5f, .8f)
     }
 
     private fun jump(dt: Float) {
         modeT += dt
         val sd = stickDir()
-        if (sd != null) { val v = 3.4f * sd[1] + 1f; move(sin(sd[0]) * v * dt, cos(sd[0]) * v * dt); if (!lock) yawTarget = sd[0] }
+        if (sd != null) { val v = sd[1] * 3.2f; move(sin(sd[0]) * v * dt, cos(sd[0]) * v * dt); if (!lock) yawTarget = sd[0] }
         val c = anims["jump"]
         anims.sample(c, modeT, false, target)
         if (modeT >= c.dur - .05f) { mode = Mode.LOCO; animator.transition(.2f) }
     }
 
-    // ---------------- ações ----------------
-    private fun startAct(a: Act, blend: Float) {
-        act = a; mode = Mode.ACT; modeT = 0f
-        animator.transition(blend)
-        vel[0] = 0f; vel[1] = 0f; speedSm = 0f
-        fireUntil(a, -1f, 0f)
+    private var hurtClip = "hit_body_front"
+    private fun hurt(dt: Float) {
+        modeT += dt
+        val c = anims[hurtClip]
+        anims.sample(c, modeT, false, target)
+        if (modeT >= c.dur) { mode = Mode.LOCO; animator.transition(.25f) }
     }
 
-    private fun fireUntil(a: Act, t0: Float, t1: Float) {
-        for (e in a.evs) if (e.t > t0 && e.t <= t1) e.f()
+    // ---------------- habilidades (skStart / skClipEnd / skTick do HTML) ----------------
+    private fun setClip(name: String, blend: Float, start: Float) {
+        if (mode == Mode.SKILL && skRun != null && cur != "idle_00") animator.transitionClip(anims[cur], t, blend) else animator.transition(blend)
+        cur = name; t = start
     }
 
-    private fun runAct(adt: Float, dt: Float) {
-        val a = act ?: run { mode = Mode.LOCO; return }
-        val t0 = a.t
-        a.t += adt
-        var seg = a.segs[a.si]
-        // troca de segmento
-        while (a.t - a.segT0 >= a.segDur(seg)) {
-            if (a.si + 1 < a.segs.size) {
-                a.segT0 += a.segDur(seg); a.si++; seg = a.segs[a.si]
-                animator.transition(seg.blend)
-            } else { a.done = true; break }
-        }
-        fireUntil(a, t0, a.t)
-        for (k in a.tks) if (a.t >= k.a && t0 < k.b) k.f(dt, clampf((a.t - k.a) / (k.b - k.a), 0f, 1f))
-        if (a.done) {
-            act = null; mode = Mode.LOCO
-            animator.transition(a.endBlend)
-            if (a.id == "basic") basicEnd = time
-            trailsOn = 0f
-            return
-        }
-        anims.sample(anims[seg.clip], seg.start + (a.t - a.segT0), false, target)
-        // gira para o alvo durante golpes
-        if (a.id != "hurt") faceTarget()
-    }
-
-    // ---- básico: cada toque toca o próximo trecho do Combo 04 (sem trancos: o clipe segue contínuo) ----
-    private fun basicPress() {
-        if (time - lastBasic < CD[0] && !noCd) return
-        val a = act
-        if (mode == Mode.ACT && a != null && a.id == "basic") {
-            if (basicK < 3) {
-                basicK++
-                a.segs[0].end = BSEG[basicK][1]
-                lastBasic = time; startCd(0)
+    private fun skillPose(dt: Float) {
+        val run = skRun ?: run { mode = Mode.LOCO; return }
+        anims.sample(anims[cur], t, false, target)
+        if (run.id == "s4" && holdOn) {
+            // segurando a Skill 4: braços erguidos com o machado, pernas andando de verdade
+            loco(dt, tmpE, aimYaw, 2.4f)
+            for (k in LOWER) for (i in 0 until 4) target.q[k * 4 + i] = tmpE.q[k * 4 + i]
+            for (i in 0 until 3) target.pel[i] = tmpE.pel[i]
+            if (holdFreeze) {
+                anims.sample(anims["throw"], .14f + .012f * sin(time * 3f), false, tmpD)
+                for (k in 2..9) for (i in 0 until 4) target.q[k * 4 + i] = tmpD.q[k * 4 + i]
             }
-            return
-        }
-        if (!canAct()) return
-        basicK = if (time - basicEnd < 1.6f && basicK < 3) basicK + 1 else 0
-        val st = BSEG[basicK][0]
-        val evs = ArrayList<Ev>()
-        for (k in basicK until 4) {
-            val s0 = BSEG[k][0] - st
-            evs.add(Ev(max(s0, 0f) + .001f) { audio.basicShout(); trailsOn = 1f; trailRed = false })
-            for (h in BHITS[k]) {
-                evs.add(Ev(h - st - .14f) { audio.sfx(if (Random.nextBoolean()) "swing1" else "swing2", .8f, rnd(.92f, 1.08f)) })
-                evs.add(Ev(h - st) { meleeHit(2.7f, 1.9f, if (k == 3 && h > 3f) 75 else 48, 1f) })
-            }
-        }
-        val seg = Seg("Combo_04", st, BSEG[basicK][1], 0f)
-        startAct(Act("basic", listOf(seg), evs, emptyList(), .3f), if (basicK == 0) .14f else .16f)
-        faceTarget()
-        lastBasic = time; startCd(0)
+        } else { vel[0] = 0f; vel[1] = 0f; speedSm = 0f }
     }
 
-    /** Golpe corpo a corpo: acerta o boneco se estiver no alcance e à frente. */
-    private fun meleeHit(range: Float, cone: Float, dmg: Int, power: Float): Boolean {
-        if (!dAlive()) return false
-        val d = distD()
-        if (d > range) return false
-        val rel = abs(wrapA(yawToD() - yaw))
-        if (rel > cone) return false
-        damage(dmg, power, true)
-        audio.sfx("axe_hit" + (1 + Random.nextInt(3)), .95f, rnd(.94f, 1.06f))
-        val at = floatArrayOf(D[0] + (P[0] - D[0]) * .25f, 1.15f, D[2] + (P[2] - D[2]) * .25f)
-        fx.hitSparks(at, if (trailRed) Fx.RED2 else Fx.GOLD2, 7, .8f)
-        hitstop = max(hitstop, .045f); shake(.25f * power)
+    private fun skStart(id: String): Boolean {
+        s2Push = 0f; s2Lunge = 0f; s2Home = null
+        if (id == "s1") audio.sfx("s1_charge", 1f, 1f, .05f)
+        if (id == "s3") { audio.sfx("s3_spin", 1f, 1f, .35f); audio.sfx("s3_rise", .8f, 1f, .25f) }
+        gold = 0f
+        when (id) {
+            "s2" -> audio.voice("hah")
+            "basic" -> later(.06f) { basicLine() }
+            "s1", "s3", "s4" -> later(.06f) { audio.voice(id) }
+            "ult" -> later(.25f) { audio.voice("buff") }
+        }
+        thrReset(); c3prev = -1f; sktPrev = -1f
+        val seq: List<Seg>; val evs: List<Ev>; val pal: String
+        when (id) {
+            "basic" -> { val g = BSEG[bqI]; seq = listOf(Seg("Combo_04", g[0], g[1])); evs = emptyList(); pal = "gold" }
+            "s1" -> { seq = listOf(Seg("attack_03", 0f, 1.75f)); evs = evS1(); pal = "gold" }
+            "s2" -> { seq = listOf(Seg("defence", 0f, .42f), Seg("attack_07", .15f, 0f, .2f)); evs = evS2(); pal = "gold" }
+            "s3" -> { seq = listOf(Seg("attack_05", 0f, 2.7f)); evs = emptyList(); pal = "earth" }
+            "s4" -> { seq = listOf(Seg("throw"), Seg("attack_08", 0f, 0f, .14f)); evs = emptyList(); pal = "gold" }
+            else -> { seq = listOf(Seg("buff_01", 0f, 1.3f), Seg("Combo_03", .3f, 0f, .2f)); evs = evUlt(); pal = "ult" }
+        }
+        // vfxClear + FX3.reset (como no HTML)
+        trl.clear(); bld.clear(); swG.forEach { it.on = false; it.pk = 0f; it.kd = 0f }; prevTip[0] = null; prevTip[1] = null
+        fx.reset(); fx.setPal(pal); sw.clear(); trl.TL = .55f; shakeA = 0f; hitstop = 0f
+        if (id == "s4") fx.aimFx { holdOn }
+        skRun = SkRun(id, seq, evs)
+        mode = Mode.SKILL
+        setClip(seq[0].clip, .22f, seq[0].start)
+        vLastCur = ""
         return true
     }
 
-    private fun damage(base: Int, power: Float, sparks: Boolean) {
-        if (!dAlive()) return
-        val crit = Random.nextFloat() < .2f
-        val v = (base * rnd(.9f, 1.12f) * (if (crit) 1.75f else 1f)).toInt()
-        dHp = max(0f, dHp - v / dHpMax)
-        dLastHit = time; dFlash = 1f
-        // balanço do boneco para longe do jogador
-        val dx = D[0] - P[0]; val dz = D[2] - P[2]; val l = max(hypot(dx, dz), .01f)
-        dTiltV[0] += dx / l * 4.5f * power; dTiltV[1] += dz / l * 4.5f * power
-        synchronized(texts) { texts.add(Txt(D[0] + rnd(-.3f, .3f), 1.9f + rnd(0f, .3f), D[2] + rnd(-.3f, .3f), v, crit, if (red > .5f) 0xFFFF5A3C.toInt() else if (crit) 0xFFFFD25A.toInt() else 0xFFFFFFFF.toInt())) }
-        if (dHp <= 0f) killDummy()
+    private fun skClipEnd() {
+        val r = skRun ?: return
+        if (r.id == "basic" && r.idx == r.seq.size - 1 && bqQ == 1) { bqQ = 0; bqI = (bqI + 1) % BSEG.size; skStart("basic"); return }
+        if (r.id == "basic") bqEnd = time
+        r.idx++
+        if (r.idx < r.seq.size) {
+            val it = r.seq[r.idx]
+            setClip(it.clip, if (it.blend > 0f) it.blend else .22f, it.start)
+            return
+        }
+        animator.transitionClip(anims[cur], t, .45f)
+        skRun = null; mode = Mode.LOCO
+        cur = "idle_00"; t = 0f
+        holdOn = false; holdFreeze = false
     }
 
-    private fun killDummy() {
-        dDead = 0f; dFall = 0f
-        audio.voice(if (Random.nextBoolean()) "fraco" else "naopode")
-        audio.sfx("s2_thud", .7f, .8f, .2f)
+    private fun basicLine() {
+        bN++
+        if (bN >= bNext) { bN = 0; bNext = 2 + Random.nextInt(2); audio.voice("cai") } else audio.voice("hah")
+    }
+
+    private fun basicPress() {
+        if (time - bqLast < 1f && !noCd) return
+        if (skRun?.id == "basic") { bqLast = time; startCd(0); bqQ = 1; return }
+        if (!canAct()) return
+        bqLast = time
+        bqI = if (time - bqEnd > 2.5f) 0 else (bqI + 1) % BSEG.size
+        faceTarget()
+        skStart("basic"); startCd(0)
     }
 
     private fun useSkill(id: String) {
         val i = SKILLS.indexOf(id)
         if (!ready(i) || !canAct()) return
-        faceTarget(true)
-        yaw = yawTarget
-        val a = when (id) {
-            "s1" -> skill1(); "s2" -> skill2(); "s3" -> skill3(); "ult" -> ultimate(); else -> null
-        } ?: return
-        startAct(a, .14f)
-        startCd(i)
+        faceTarget()
+        vel[0] = 0f; vel[1] = 0f
+        if (skStart(id)) startCd(i)
     }
 
-    private fun front(d: Float, out: FloatArray = FloatArray(3)): FloatArray {
-        out[0] = P[0] + sin(yaw) * d; out[1] = 0f; out[2] = P[2] + cos(yaw) * d; return out
-    }
+    // ---- pontos de referência (Hl/Fl/Rl/tips/blades do HTML), em metros ----
+    private fun skRootU(): V { M4.mul(wTmp, 0, charM, 0, skel.world, 16); return v3(wTmp[12] / K, wTmp[13] / K, wTmp[14] / K) }
+    private fun Hl(d: Float, y: Float): V { val r = skRootU(); return v3(r[0] * K + sin(yaw) * d, y, r[2] * K + cos(yaw) * d) }
+    private fun Rl() = Hl(0f, 0f)
 
-    private fun midBlades(): FloatArray = floatArrayOf((blades[0][0] + blades[1][0]) / 2, (blades[0][1] + blades[1][1]) / 2, (blades[0][2] + blades[1][2]) / 2)
+    private fun evS1(): List<Ev> = listOf(
+        At(.72f) {
+            val h = Hl(1.15f, 1.0f); val T = .2f
+            shake(.15f); audio.sfx("s1_launch")
+            val a = tips[0]; val b = tips[1]; val f0 = Hl(.35f, 0f); f0[1] = clampf((a[1] + b[1]) / 2, .7f, 1.3f)
+            fx.xBlade2(f0, h, T)
+            fx.later(T) { audio.sfx("s1_impact"); dmg(20f); shake(.5f); hitstop = .06f }
+        })
 
-    // Skill 1 — Cruz Ceifadora
-    private fun skill1(): Act {
-        audio.voice("s1")
-        return Act("s1", listOf(Seg("attack_03", 0f, 1.75f, .14f)), listOf(
-            Ev(.01f) { trailsOn = 1f; trailRed = false; audio.sfx("s1_charge", .8f) },
-            Ev(.72f) {
-                audio.sfx("s1_launch")
-                val from = midBlades(); from[1] = clampf(from[1], 1.1f, 1.6f)
-                val hit = dAlive() && distD() < 9f && abs(wrapA(yawToD() - yaw)) < .6f
-                val to = if (hit) floatArrayOf(D[0], 1.25f, D[2]) else front(7f).also { it[1] = 1.3f }
-                val L = hypot(to[0] - from[0], to[2] - from[2])
-                val T = clampf(L / 22f, .08f, .3f)
-                fx.xBlade(from, to, Fx.GOLD, Fx.GOLD2, T)
-                shake(.15f)
-                later(T) {
-                    if (hit && dAlive()) {
-                        fx.xMark(floatArrayOf(D[0] + (P[0] - D[0]) * .08f, 1.25f, D[2] + (P[2] - D[2]) * .08f), yawToD(), Fx.GOLD, Fx.GOLD2)
-                        audio.sfx("s1_impact"); audio.sfx("axe_hit2", .7f)
-                        damage(150, 1.6f, true); hitstop = .07f; shake(.5f)
-                    }
+    private fun evS2(): List<Ev> = listOf(
+        At(.04f) { audio.sfx("s2_guard"); fx.guardAura(.95f) { k -> tips[k] } },
+        Rg(.04f, .3f) { _, p -> gold = min(1f, p * 1.2f) },
+        At(.2f) { s2Lunge = .16f },
+        At(.34f) {
+            val a = tips[0]; val b = tips[1]
+            fx.deflectFx(v3((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2))
+            audio.sfx("parry"); audio.sfx("impact", .8f); shake(.6f); hitstop = .07f; gold = 1f; bld.flash = .6f
+        },
+        At(1.02f) {
+            fx.counterWave(Rl()); audio.voice("s2"); audio.sfx("s2_wave"); audio.sfx("s2_thud", .8f)
+            dmg(25f); shake(1f); hitstop = .08f; s2Push = .32f
+        },
+        Rg(1.06f, 1.6f) { _, p -> gold = max(0f, 1 - p * 2) })
+
+    private fun evUlt(): List<Ev> = listOf(
+        At(.3f) {
+            fx.bloodAura(5.75f); audio.sfx("ult_roar"); audio.sfx("ult_aura", 1f, 1f, .25f, "aura", 4.6f, 1f)
+            flash(.3f); vig(1f); shake(1f)
+        },
+        Rg(1.35f, 30f) { _, _ -> ultC3() })
+
+    private fun ultC3() {
+        if (cur != "Combo_03") { c3prev = -1f; return }
+        val tt = t
+        if (c3prev < 0) { c3prev = tt; return }
+        for (i in C3T.indices) {
+            val T = C3T[i]
+            if (c3prev < T && tt >= T) {
+                val fin = i == C3T.size - 1
+                val a = blades[0]; val b = blades[1]; val c = v3((a[0] + b[0]) / 2, 0f, (a[2] + b[2]) / 2); val far = hypot(a[0] - b[0], a[2] - b[2]) > .9f
+                fun both(fn: (V, Float) -> Unit) { if (far) { fn(v3(a[0], 0f, a[2]), .72f); fn(v3(b[0], 0f, b[2]), .72f) } else fn(c, 1f) }
+                if (fin) {
+                    audio.sfx("ult_final"); audio.sfx("ult_debris", .9f); audio.sfx("ult_slam", .8f, .9f); dmg(30f)
+                    both { p, k -> fx.ultSlamBig(p, 2.0f * k) }
+                    sw.fire(c, 13f, 1.7f, v3(1f, .06f, .03f), 3f); sw.fire(c, 8.5f, 1.2f, v3(1f, .14f, .06f), 2.2f, .12f); sw.fire(c, 5f, .8f, v3(1f, .35f, .25f), 1.6f, .25f)
+                    hitstop = .24f; shake(3f); vig(.8f)
+                } else {
+                    audio.sfx("ult_slam", .8f + i * .08f, rnd(.96f, 1.04f)); audio.sfx("ult_debris", .55f + i * .08f, rnd(.95f, 1.05f)); dmg(14f)
+                    both { p, k -> fx.ultSlamBig(p, (1.35f + i * .15f) * k) }
+                    sw.fire(c, 3.2f + i * .6f, .7f, v3(1f, .08f, .04f), 1.4f + i * .3f)
+                    hitstop = .09f; shake(1.5f + i * .3f); vig(.35f)
                 }
             }
-        ), listOf(Tk(.25f, .72f) { _, p -> for (b in blades) fx.gather(b, Fx.GOLD2, p) }))
-    }
-
-    // Skill 2 — Contra-Ataque do Carrasco
-    private fun skill2(): Act {
-        audio.voice("hah")
-        return Act("s2", listOf(Seg("defence", 0f, .42f, .12f), Seg("attack_07", .15f, -1f, .2f)), listOf(
-            Ev(.04f) { audio.sfx("s2_guard", .9f) },
-            Ev(.3f) { dummyLunge() },
-            Ev(.34f) {
-                val m = midBlades()
-                fx.deflect(m, Fx.GOLD, Fx.GOLD2)
-                audio.sfx("parry"); audio.sfx("impact", .7f)
-                shake(.6f); hitstop = .07f; gold = 1f
-            },
-            Ev(.95f) { trailsOn = 1f; trailRed = false },
-            Ev(1.02f) {
-                fx.counterWave(floatArrayOf(P[0], 0f, P[2]), Fx.GOLD, Fx.GOLD2)
-                audio.voice("s2"); audio.sfx("s2_wave"); audio.sfx("s2_thud", .8f)
-                shake(1f); hitstop = .08f
-                if (dAlive() && distD() < 4.8f) {
-                    damage(170, 2f, true)
-                    val dx = D[0] - P[0]; val dz = D[2] - P[2]; val l = max(hypot(dx, dz), .01f)
-                    dPushV[0] = dx / l * 9f; dPushV[1] = dz / l * 9f
-                }
-            }
-        ), listOf(
-            Tk(.04f, .3f) { _, p -> gold = max(gold, min(1f, p * 1.2f)) },
-            Tk(.3f, 1.06f) { _, _ -> gold = 1f },
-            Tk(1.06f, 1.6f) { _, p -> gold = max(0f, 1f - p * 1.6f) }
-        ))
-    }
-
-    // Skill 3 — Rompe-Terra
-    private fun skill3(): Act {
-        audio.voice("s3")
-        val c = front(1.75f)
-        return Act("s3", listOf(Seg("attack_05", 0f, 2.7f, .14f)), listOf(
-            Ev(.05f) { audio.sfx("s3_rise", .8f) },
-            Ev(.28f) { fx.teleOn = .9f; fx.telePos[0] = c[0]; fx.telePos[2] = c[2]; fx.teleR = 2.2f; trailsOn = 1f; trailRed = false },
-            Ev(.45f) { audio.sfx("s3_spin", .85f) },
-            Ev(.82f) { audio.sfx("s3_spin", .9f, 1.08f) },
-            Ev(1.2f) { audio.sfx("swing2", .9f, .85f) },
-            Ev(1.36f) {
-                fx.teleOn = 0f
-                val g = lowBlade()
-                fx.groundImpact(g, Fx.GOLD, Fx.GOLD2, 1.15f)
-                audio.sfx("s3_slam"); audio.sfx("s3_boom", .9f, 1f, .05f)
-                shake(1.1f); hitstop = .13f
-                if (dAlive() && hypot(D[0] - g[0], D[2] - g[2]) < 3f) damage(260, 2.4f, true)
-            }
-        ), listOf(
-            Tk(.28f, 1.36f) { _, p -> fx.teleP = p; val b = lowBlade(); fx.telePos[0] = lerpf(fx.telePos[0], b[0], .1f); fx.telePos[2] = lerpf(fx.telePos[2], b[2], .1f) },
-            Tk(.4f, 1.28f) { _, p -> for (b in blades) fx.gather(b, Fx.GOLD2, p) }
-        ))
-    }
-
-    private fun lowBlade(): FloatArray {
-        val b = if (blades[0][1] < blades[1][1]) blades[0] else blades[1]
-        // mantém à frente do personagem
-        val f = front(1.6f)
-        return floatArrayOf(lerpf(f[0], b[0], .6f), 0f, lerpf(f[2], b[2], .6f))
-    }
-
-    // Ultimate — Ragnarok do Carrasco
-    private fun ultimate(): Act {
-        audio.voice("buff")
-        val slams = floatArrayOf(.92f, 1.75f, 2.55f, 3.55f).map { 1.3f + (it - .3f) }
-        val evs = arrayListOf(
-            Ev(.3f) {
-                auraT = 5.75f; red = 1f; trailRed = true
-                fx.auraBurst(floatArrayOf(P[0], 0f, P[2]))
-                audio.sfx("ult_roar"); audio.sfx("ult_aura", 1f, 1f, .25f, "aura")
-                shake(1f)
-            },
-            Ev(1.3f) { trailsOn = 1f; trailRed = true }
-        )
-        for ((i, t) in slams.withIndex()) {
-            evs.add(Ev(t - .14f) { audio.sfx("swing2", .9f, .8f) })
-            evs.add(Ev(t) {
-                val last = i == slams.size - 1
-                val g = lowBlade()
-                fx.groundImpact(g, Fx.RED, Fx.RED2, if (last) 1.5f else 1.05f)
-                audio.sfx(if (last) "ult_final" else "ult_slam"); audio.sfx("ult_debris", .7f, 1f, .05f)
-                shake(if (last) 1.4f else .9f); hitstop = if (last) .14f else .09f
-                if (dAlive() && hypot(D[0] - g[0], D[2] - g[2]) < (if (last) 3.6f else 3f)) damage(if (last) 340 else 140, if (last) 2.6f else 1.6f, true)
-            })
         }
-        return Act("ult", listOf(Seg("buff_01", 0f, 1.3f, .12f), Seg("Combo_03", .3f, -1f, .2f)), evs, emptyList(), .35f)
+        c3prev = tt
     }
 
-    // ---------------- Skill 4: segurar, mirar e soltar ----------------
+    /** Skill 3: impacto no tempo exato do golpe (SKT do HTML) */
+    private fun skTimed() {
+        val r = skRun ?: return
+        if (r.id != "s3" || cur != "attack_05") { sktPrev = -1f; return }
+        val T = 1.35f; val Pw = .62f
+        if (sktPrev >= 0 && sktPrev < T && t >= T) {
+            val a = blades[0]; val b = blades[1]; val c = v3((a[0] + b[0]) / 2, 0f, (a[2] + b[2]) / 2)
+            audio.sfx("s3_slam"); audio.sfx("s3_boom", .85f); dmg(22f)
+            if (hypot(a[0] - b[0], a[2] - b[2]) > .9f) { fx.tintSlam(v3(a[0], 0f, a[2]), Pw * .75f, fx.earthT); fx.tintSlam(v3(b[0], 0f, b[2]), Pw * .75f, fx.earthT) }
+            else fx.tintSlam(c, Pw, fx.earthT)
+            sw.fire(c, .9f + Pw * 1.3f, .6f, v3(1f, .5f, .15f), 1.2f + Pw * .4f)
+            hitstop = .08f; shake(2.6f * .6f)
+        }
+        sktPrev = t
+    }
+
+    private fun s2LungeTick(dt: Float) {
+        if (s2Lunge <= 0f) { val h = s2Home; if (h != null && !(s2Push > 0f)) { bld.E = h.copyOf(); s2Home = null }; return }
+        if (s2Home == null) s2Home = bld.E.copyOf()
+        val home = s2Home!!
+        s2Lunge -= dt
+        val r = skRootU(); val q = 1 - max(0f, s2Lunge) / .16f; val k = sin(PIf * q) * .32f
+        val dx = home[0] - r[0]; val dz = home[2] - r[2]; val d = hypot(dx, dz).let { if (it == 0f) 1f else it }
+        bld.E = v3(home[0] - dx / d * k, 0f, home[2] - dz / d * k); bld.tilt = -.25f * sin(PIf * q)
+    }
+
+    private fun s2PushTick(dt: Float) {
+        if (s2Push <= 0f) return
+        s2Push -= dt
+        val r = skRootU(); var dx = bld.E[0] - r[0]; var dz = bld.E[2] - r[2]; val d = hypot(dx, dz).let { if (it == 0f) 1f else it }; dx /= d; dz /= d
+        val v = dt * 9 * max(0f, s2Push / .32f)
+        if (d < 3) bld.E = v3(bld.E[0] + dx * v, 0f, bld.E[2] + dz * v)
+        if (Math.random() < .6) fx.dustFx(v3(bld.E[0] * K, 0f, bld.E[2] * K), .4f, 1)
+    }
+
+    // ---------------- Skill 4 ----------------
     private fun s4Down() {
         if (!ready(4) || !canAct()) return
-        s4 = S4.HOLD; s4Hold = 0f
-        aimYaw = if (dAlive() && distD() < 11f) yawToD() else yaw
-        mode = Mode.ACT; act = null
-        animator.transition(.15f)
-        audio.voice("s4")
-        audio.sfx("s1_charge", .5f, 1.2f)
+        faceTarget(); aimYaw = yaw
+        holdOn = true; holdFreeze = false; holdEl = 0f
+        skStart("s4"); startCd(4)
     }
+    private fun s4Up() { holdOn = false; holdFreeze = false }
 
-    private fun s4Release() {
-        if (s4 != S4.HOLD) return
-        s4 = S4.WINDUP; s4T = .14f
-        startCd(4)
-        fx.aimOn = false
+    private fun thrReset() { thrOn = 0; thrGlow = 0f; thrPh = 0 }
+
+    private fun m3(M: FloatArray) = floatArrayOf(M[0], M[1], M[2], M[4], M[5], M[6], M[8], M[9], M[10])
+    private fun rotAx(ax: V, a: Float): FloatArray {
+        val c = cos(a); val s = sin(a); val tt = 1 - c; val x = ax[0]; val y = ax[1]; val z = ax[2]
+        return floatArrayOf(tt * x * x + c, tt * x * y + s * z, tt * x * z - s * y, tt * x * y - s * z, tt * y * y + c, tt * y * z + s * x, tt * x * z + s * y, tt * y * z - s * x, tt * z * z + c)
     }
+    private fun mul3(A: FloatArray, B: FloatArray): FloatArray {
+        val o = FloatArray(9)
+        for (c in 0 until 3) for (r in 0 until 3) o[c * 3 + r] = A[r] * B[c * 3] + A[3 + r] * B[c * 3 + 1] + A[6 + r] * B[c * 3 + 2]
+        return o
+    }
+    private fun setM(R: FloatArray, Pp: V) {
+        val M = thrM
+        M[0] = R[0]; M[1] = R[1]; M[2] = R[2]; M[3] = 0f; M[4] = R[3]; M[5] = R[4]; M[6] = R[5]; M[7] = 0f; M[8] = R[6]; M[9] = R[7]; M[10] = R[8]; M[11] = 0f
+        val hx = R[0] * HP[0] + R[3] * HP[1] + R[6] * HP[2]; val hy = R[1] * HP[0] + R[4] * HP[1] + R[7] * HP[2]; val hz = R[2] * HP[0] + R[5] * HP[1] + R[8] * HP[2]
+        M[12] = Pp[0] - hx; M[13] = Pp[1] - hy; M[14] = Pp[2] - hz; M[15] = 1f
+    }
+    private fun tf(m: FloatArray, p: V) = v3(m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14])
+    private fun handPosM() = v3(wM[1][12], wM[1][13], wM[1][14])
 
-    private fun s4Tick(dt: Float) {
-        when (s4) {
-            S4.OFF -> return
-            S4.HOLD -> {
-                s4Hold += dt
-                if (Input.aimActive) {
-                    val ax = Input.aimX; val ay = Input.aimY
-                    val fx2 = sin(camYaw); val fz = cos(camYaw)
-                    val dx = fx2 * ay + -fz * ax; val dz = fz * ay + fx2 * ax
-                    aimYaw = atan2(dx, dz)
+    private fun thrTick(dt: Float) {
+        val r = skRun
+        if (r == null || r.id != "s4") { if (thrOn != 0 || thrGlow > 0f) { thrOn = 0; thrGlow = max(0f, thrGlow - dt * 3) }; return }
+        val ts = r.offs[r.idx] + t
+        if (thrPh == 0 && holdOn) {
+            if (ts >= .14f) holdFreeze = true
+            if (holdFreeze) { thrGlow = min(1f, .6f + .4f * sin(time * 1000f / 90f)); aimTick(); if (holdEl > 5f) s4Up(); return }
+        }
+        if (thrPh == 0) {
+            thrGlow = min(1f, ts / TREL)
+            if (ts >= TREL) {
+                thrPh = 1
+                val m0 = wU[1].copyOf(); thrP0 = tf(m0, HP)
+                val ru = skRootU()
+                val dd = D; val ddx = dd[0] - P[0]; val ddz = dd[2] - P[2]; val L = hypot(ddx, ddz); val a = atan2(ddx, ddz)
+                val hit = L < 10.5f && abs(wrapA(a - yaw)) < .22f
+                holdMiss = !hit
+                if (!hit) { val fx0 = sin(yaw); val fz0 = cos(yaw); thrDir = v3(fx0, 0f, fz0); val d = 9f / K; thrT = v3(ru[0] + fx0 * d, .5f, ru[2] + fz0 * d) }
+                else { val E = bld.E; var dx = E[0] - ru[0]; var dz = E[2] - ru[2]; val n2 = hypot(dx, dz).let { if (it == 0f) 1f else it }; dx /= n2; dz /= n2; thrDir = v3(dx, 0f, dz); thrT = v3(E[0] - dx * .1f, .5f, E[2] - dz * .1f) }
+                thrAx = v3(thrDir[2], 0f, -thrDir[0]); thrOn = 1; thrR0 = m3(m0)
+                shake(.25f); audio.sfx("axe_whir", .9f); audio.sfx("chain_throw")
+                fx.chain2({ handPosM() }, { vmul(tf(thrM, v3(0f, .05f, 0f)), K) }, { thrPh }, {
+                    val rr = skRun; if (rr == null) 1f else clampf(((rr.offs[rr.idx] + t) - TREL) / TFLY, 0f, 1f)
+                }, TPULL)
+            }
+        }
+        if (thrPh == 1) {
+            val u = min(1f, (ts - TREL) / TFLY)
+            val Pp = v3(thrP0[0] + (thrT[0] - thrP0[0]) * u, thrP0[1] + (thrT[1] - thrP0[1]) * u + sin(PIf * u) * .12f, thrP0[2] + (thrT[2] - thrP0[2]) * u)
+            val R = mul3(rotAx(thrAx, u * PIf * 2 * 2.25f), thrR0); setM(R, Pp); thrRh = R
+            if (Math.random() < .9) fx.thrSpark(vmul(Pp, K))
+            if (u >= 1) {
+                thrPh = 2; thrTh = ts
+                fx.thrHit(vmul(Pp, K)); audio.sfx("chain_snap_o")
+                if (!holdMiss) {
+                    audio.sfx("axe_hit2", 1f); dmg(15f)
+                    stunT = 1.9f
+                    fx.stunFx({ v3(bld.E[0] * K, 1.75f, bld.E[2] * K) }, 1.9f)
                 }
-                yawTarget = aimYaw
-                gold = min(1f, gold + dt * 3f)
-                fx.aimOn = true; fx.aimFrom[0] = P[0]; fx.aimFrom[2] = P[2]; fx.aimYaw = aimYaw; fx.aimLen = 11f
-                anims.sample(anims["throw"], .14f, false, target)
-                if (s4Hold >= 5f) s4Release()
-            }
-            S4.WINDUP -> {
-                s4T += dt
-                anims.sample(anims["throw"], s4T, false, target)
-                yawTarget = aimYaw
-                if (s4T >= .25f) {
-                    s4 = S4.FLY; axeFlying = true; axeHit = false; axeDist = 0f
-                    axePos[0] = handR[0]; axePos[1] = max(handR[1], 1.1f); axePos[2] = handR[2]
-                    axeDir[0] = sin(aimYaw); axeDir[1] = cos(aimYaw)
-                    audio.sfx("chain_throw"); audio.sfx("axe_whir", .8f, 1f, .05f)
-                    shake(.2f)
-                }
-            }
-            S4.FLY -> {
-                s4T += dt
-                anims.sample(anims["throw"], s4T, false, target)
-                val step = 24f * dt
-                axePos[0] += axeDir[0] * step; axePos[2] += axeDir[1] * step; axeDist += step
-                axePos[1] = lerpf(axePos[1], 1.2f, dt * 4f)
-                axeSpin += dt * 26f
-                if (dAlive() && hypot(axePos[0] - D[0], axePos[2] - D[2]) < .7f) {
-                    s4 = S4.STUCK; s4T = 0f; axeHit = true
-                    fx.hitSparks(floatArrayOf(axePos[0], 1.2f, axePos[2]), Fx.GOLD2, 14, 1.2f)
-                    audio.sfx("axe_hit3"); audio.sfx("chain_snap", 1f, 1f, .05f)
-                    damage(70, 1.2f, true); hitstop = .06f; shake(.35f)
-                    dStun = 1.6f; fx.stunStars(floatArrayOf(D[0], 2.0f, D[2]))
-                } else if (axeDist > 11.5f) {
-                    s4 = S4.BACK; s4T = 0f; System.arraycopy(axePos, 0, pullFrom, 0, 3)
-                }
-            }
-            S4.STUCK -> {
-                s4T += dt
-                anims.sample(anims["throw"], .73f, false, target)
-                axePos[0] = D[0] + (P[0] - D[0]) * .1f; axePos[2] = D[2] + (P[2] - D[2]) * .1f
-                fx.chainOn = true; fx.chainA0 = min(1f, s4T / .1f)
-                System.arraycopy(handR, 0, fx.chainA, 0, 3); System.arraycopy(axePos, 0, fx.chainB, 0, 3)
-                if (s4T > .16f) {
-                    s4 = S4.PULL; s4T = 0f; System.arraycopy(axePos, 0, pullFrom, 0, 3)
-                    dPullFrom[0] = D[0]; dPullFrom[1] = D[2]
-                    audio.sfx("chain_pull")
-                    animator.transition(.12f)
-                }
-            }
-            S4.PULL -> {
-                s4T += dt
-                val u = smooth(s4T / .42f)
-                anims.sample(anims["throw"], .73f, false, target)
-                // o boneco vem junto até ficar à frente do guerreiro
-                val stop = front(1.55f)
-                D[0] = lerpf(dPullFrom[0], stop[0], u); D[2] = lerpf(dPullFrom[1], stop[2], u)
-                for (i in 0 until 3) axePos[i] = lerpf(pullFrom[i], handR[i], u)
-                axePos[1] = lerpf(pullFrom[1], handR[1], u)
-                axeSpin -= dt * 22f
-                fx.chainOn = true; System.arraycopy(handR, 0, fx.chainA, 0, 3); System.arraycopy(axePos, 0, fx.chainB, 0, 3)
-                if (Math.random() < .5) fx.sprite(floatArrayOf(D[0], .1f, D[2]), Fx.SMOKE, 1, .5f, 1.2f, .6f, Fx.DUST, .35f, Fx.M_SMOKE)
-                if (s4T >= .42f) catchAxe(true)
-            }
-            S4.BACK -> {
-                s4T += dt
-                val u = smooth(s4T / .38f)
-                anims.sample(anims["throw"], .73f, false, target)
-                for (i in 0 until 3) axePos[i] = lerpf(pullFrom[i], handR[i], u)
-                axeSpin -= dt * 26f
-                if (s4T >= .38f) catchAxe(false)
+                shake(.6f); hitstop = .06f
             }
         }
-        if (axeFlying) {
-            // matriz do machado voando: gira em torno do eixo lateral
-            val m = FloatArray(16); M4.trs(m, axePos[0], axePos[1], axePos[2], aimYaw, K * skel.rig.wScale)
-            val r = FloatArray(16); M4.id(r)
-            val c = cos(axeSpin); val s = sin(axeSpin)
-            r[5] = c; r[6] = s; r[9] = -s; r[10] = c
-            val sc = FloatArray(16); M4.id(sc); sc[0] = skel.rig.wsx; sc[10] = skel.rig.wsz
-            val t = FloatArray(16); M4.mul(t, m, r); M4.mul(axeM, t, sc)
-            // centraliza o cabo (o pivô da malha fica no punho)
-            axeM[12] -= (axeM[4] * .45f); axeM[13] -= (axeM[5] * .45f); axeM[14] -= (axeM[6] * .45f)
+        if (thrPh == 2 && ts - thrTh >= THOLD) { thrPh = 3; audio.sfx("chain_pull") }
+        if (thrPh == 3) {
+            val u = min(1f, (ts - thrTh - THOLD) / TPULL); val e = u * u * (3 - 2 * u)
+            val mh = wU[1]; val Ph = tf(mh, HP)
+            val Pp = v3(thrT[0] + (Ph[0] - thrT[0]) * e, thrT[1] + (Ph[1] - thrT[1]) * e + sin(PIf * e) * .1f, thrT[2] + (Ph[2] - thrT[2]) * e)
+            val Rr = mul3(rotAx(thrAx, -PIf * 2 * 2 * (1 - e)), m3(mh)); val k = min(1f, u * 4)
+            val R = FloatArray(9) { i -> thrRh[i] + (Rr[i] - thrRh[i]) * k }; setM(R, Pp)
+            if (!holdMiss) {
+                val ru = skRootU(); val Dd = thrDir
+                val pr = (Pp[0] - ru[0]) * Dd[0] + (Pp[2] - ru[2]) * Dd[2]; val want = max(.8f, pr + .1f)
+                bld.E = v3(ru[0] + Dd[0] * want, 0f, ru[2] + Dd[2] * want)
+            }
+            if (Math.random() < .7) fx.thrSpark(vmul(Pp, K))
+            if (u >= 1) { thrPh = 4; thrOn = 0; thrTc = ts; fx.thrCatch(vmul(Ph, K)); shake(.45f); audio.sfx("impact", .6f, 1.15f) }
         }
+        if (thrPh == 4) thrGlow = max(0f, 1 - (ts - thrTc) / .5f)
+        if (thrOn == 1) { for (i in 0 until 16) axeM[i] = if (i % 4 == 3) thrM[i] else thrM[i] * K }
     }
 
-    private fun catchAxe(hit: Boolean) {
-        axeFlying = false; fx.chainOn = false
-        audio.sfx("axe_hit1", .5f, 1.2f)
-        s4 = S4.OFF
-        if (hit) {
-            val evs = listOf(
-                Ev(.01f) { trailsOn = 1f; trailRed = false },
-                Ev(.4f) { audio.sfx("swing1", .9f) },
-                Ev(.55f) { meleeHit(2.8f, 1.6f, 120, 1.4f); gold = .6f }
-            )
-            startAct(Act("s4b", listOf(Seg("attack_08", 0f, -1f, .14f)), evs, listOf(Tk(.6f, 1.1f) { _, p -> gold = max(0f, .6f * (1 - p)) })), .14f)
-        } else {
-            mode = Mode.LOCO; animator.transition(.25f)
-            gold = 0f
+    /** GAME.aimTick: o corpo gira para a direção escolhida no arrasto */
+    private fun aimTick() {
+        if (Input.aimActive) {
+            val ax = Input.aimX; val ay = Input.aimY
+            val f0 = sin(camYaw); val fz = cos(camYaw)
+            aimYaw = atan2(f0 * ay - fz * ax, fz * ay + f0 * ax)
         }
+        yaw += wrapA(aimYaw - yaw) * .25f; yawTarget = yaw
     }
 
-    // ---------------- boneco ----------------
-    private fun dummyLunge() {
-        val dx = P[0] - D[0]; val dz = P[2] - D[2]; val l = max(hypot(dx, dz), .01f)
-        dTiltV[0] += dx / l * 6f; dTiltV[1] += dz / l * 6f
-        audio.sfx("swing3", .7f, .8f)
+    // ---------------- vfxTick: rastro, acerto pelas lâminas ----------------
+    private fun vfxTick() {
+        val atk = skRun != null && (cur.startsWith("attack", true) || cur.startsWith("combo", true))
+        val ad = t - vLastT
+        if (cur != vLastCur || ad < -1e-4f || ad > .25f) { trl.trail[0].clear(); trl.trail[1].clear(); prevTip[0] = null; prevTip[1] = null; swG.forEach { it.on = false; it.pk = 0f; it.kd = 0f } }
+        for (s in 0 until 2) {
+            val tr = trl.trail[s]
+            for (q in tr) q.age += max(ad, 0f)
+            while (tr.isNotEmpty() && tr[0].age > trl.TL) tr.removeAt(0)
+            if (!atk || !(ad > 0f)) continue
+            val wm = if (s == 1 && thrOn == 1) thrM else wU[s]
+            val Pq = Array(4) { tf(wm, EDG[it]) }
+            val pt = prevTip[s]
+            var sp = 0f
+            if (pt != null) for (i in intArrayOf(1, 3)) sp = max(sp, vlen(vsub(Pq[i], pt[i])) / ad)
+            val g = swG[s]
+            if (!g.on && sp > 2.4f && sp >= g.pk) { g.on = true; if (s == 1 || !swG[1].on) whoosh(min(1.6f, sp / 5)) }
+            if (g.on) { g.pk = max(g.pk, sp); if (sp < g.pk * .62f) g.on = false } else if (sp < 1.3f) g.pk = 0f
+            val kt = if (g.on) clampf((sp - 1.4f) / 2.6f, 0f, 1f) else 0f
+            g.kd += (kt - g.kd) * (if (kt > g.kd) .55f else .22f)
+            val k = g.kd
+            if (k > .015f) tr.add(Trl.Row(Pq, 0f, k))
+            bld.hitTest(s, Pq, pt, k, ad, sp)
+            prevTip[s] = Pq
+        }
+        vLastCur = cur; vLastT = t
     }
 
-    private fun updateDummy(dt: Float) {
-        dFlash = max(0f, dFlash - dt * 5f)
-        // mola do balanço
-        for (i in 0 until 2) {
-            dTiltV[i] += (-dTilt[i] * 60f - dTiltV[i] * 5.5f) * dt
-            dTilt[i] += dTiltV[i] * dt
-            dTilt[i] = clampf(dTilt[i], -.7f, .7f)
+    private fun whoosh(k: Float) {
+        val g = min(1.2f, .55f + .4f * k)
+        audio.sfx(if (Random.nextBoolean()) "swing1" else "swing2", g, rnd(.9f, 1.1f))
+        audio.sfx("swing3", g * .7f, rnd(.95f, 1.15f))
+    }
+
+    /** __IMP do HTML: som, dano e impacto visual quando a lâmina acerta o boneco */
+    private fun onImpact(c: V, d: V, k: Float) {
+        audio.sfx("axe_hit" + (1 + Random.nextInt(3)), .8f + .3f * min(1.4f, .7f + .5f * min(1f, k)), rnd(.93f, 1.07f))
+        dmg(4 + 6 * min(1f, k))
+        if (skRun?.id == "s1") return
+        fx.impactFx(vmul(c, K), .75f + .55f * min(1f, k), v3(d[0], 0f, d[2]))
+    }
+
+    private fun dmg(n: Float) {
+        dHp -= n
+        val crit = n >= 20f
+        synchronized(texts) {
+            val E = bld.E
+            texts.add(Txt(E[0] * K + rnd(-.3f, .3f), 1.9f + rnd(0f, .3f), E[2] * K + rnd(-.3f, .3f), (n * 10).roundToInt(), crit,
+                if (red > .5f) 0xFFFF5A3C.toInt() else if (crit) 0xFFFFD25A.toInt() else 0xFFFFFFFF.toInt()))
         }
-        // empurrão
-        if (abs(dPushV[0]) + abs(dPushV[1]) > .01f) {
-            D[0] += dPushV[0] * dt; D[2] += dPushV[1] * dt
-            val k = exp(-7f * dt); dPushV[0] *= k; dPushV[1] *= k
-            val r = hypot(D[0], D[2]); if (r > 13.5f) { D[0] *= 13.5f / r; D[2] *= 13.5f / r }
+        if (dHp <= 0f) { dHp = 100f; later(.35f) { audio.voice(if (Random.nextBoolean()) "fraco" else "naopode") }; bld.flash = 1f }
+    }
+
+    // ---------------- skTick ----------------
+    private fun skTick(dt: Float) {
+        val ultOn = skRun?.id == "ult"
+        red += ((if (ultOn) 1f else 0f) - red) * min(1f, dt * (if (ultOn) 5f else 1.5f))
+        trl.red = red
+        val sd = dt * tsCur
+        trl.upd(sd); bld.upd(sd)
+        shakeA *= exp(-dt * 6.5f); flashA *= exp(-dt * 5f); vigA = max(0f, vigA - dt / 1.6f)
+        sw.tick(dt)
+        val ru = skRootU(); fx.root[0] = ru[0] * K; fx.root[1] = 0f; fx.root[2] = ru[2] * K; fx.yaw = yaw
+        for (k in 0 until 2) {
+            val wm = if (k == 1 && thrOn == 1) axeM else wM[k]
+            val tp = tf(wm, v3(0f, .6f, 0f)); tips[k][0] = tp[0]; tips[k][1] = tp[1]; tips[k][2] = tp[2]
+            var lo: V? = null
+            for (e in EDG) { val w = tf(wm, e); if (lo == null || w[1] < lo[1]) lo = w }
+            System.arraycopy(lo!!, 0, blades[k], 0, 3)
         }
-        // vira devagar para o jogador
-        if (dAlive()) dYaw += wrapA(atan2(P[0] - D[0], P[2] - D[2]) - dYaw) * min(1f, dt * 2f)
-        if (dStun > 0f) dStun -= dt
-        // morte e retorno
-        if (!dAlive()) {
-            dDead += dt
-            dFall = smooth(dDead / .55f) * (if (dDead > 2.6f) 1f - smooth((dDead - 2.6f) / .6f) else 1f)
-            if (dDead > 3.2f) { dDead = -1f; dFall = 0f; dHp = 1f; audio.sfx("ding", .5f) }
-        } else if (time - dLastHit > 5f && dHp < 1f) dHp = min(1f, dHp + dt * .25f)
-        // o boneco revida de vez em quando (o guerreiro sente o golpe)
-        dAtkT -= dt
-        if (dAtkT <= 0f) {
-            dAtkT = rnd(7f, 10f)
-            if (dAlive() && dStun <= 0f && mode == Mode.LOCO && s4 == S4.OFF && distD() < 2.4f) {
-                dummyLunge()
-                later(.18f) {
-                    if (mode == Mode.LOCO && s4 == S4.OFF) {
-                        startAct(Act("hurt", listOf(Seg(if (Random.nextBoolean()) "hit_body_front" else "hit_head_front", 0f, -1f, .06f)), emptyList(), emptyList(), .2f), .06f)
-                        audio.sfx("hit_body", .9f)
-                        if (Random.nextFloat() < .7f) audio.voice(if (Random.nextBoolean()) "argh" else "desgr", true)
-                        shake(.3f)
-                    }
+        val r = skRun
+        if (r != null) {
+            val now = r.offs[r.idx] + t; val pv = r.prev
+            for (e in r.ev) {
+                when (e) {
+                    is At -> if (pv < e.at && now >= e.at) e.fn(now)
+                    is Rg -> if (now >= e.from && now <= e.to) e.fn(sd, (now - e.from) / (e.to - e.from))
                 }
             }
+            r.prev = now
         }
+        if (skRun != null) { skTimed(); thrTick(sd); s2LungeTick(sd); s2PushTick(sd) }
+        if (skRun == null) { gold = max(0f, gold - dt * 2); if (thrOn != 0 || thrGlow > 0f) thrTick(dt) }
+        if (stunT > 0f) stunT -= dt
+        if (pending.isNotEmpty()) {
+            val due = ArrayList<() -> Unit>(); val it = pending.iterator()
+            while (it.hasNext()) { val p = it.next(); if (p.first <= time) { due.add(p.second); it.remove() } }
+            due.forEach { it() }
+        }
+        fx.upd(if (holdFreeze) dt else sd)
+        dummyAttack(dt)
     }
 
-    fun dummyFall() = dFall
-
-    // ---------------- efeitos ----------------
     private val pending = ArrayList<Pair<Float, () -> Unit>>()
     private fun later(d: Float, f: () -> Unit) { pending.add(Pair(time + d, f)) }
 
-    private fun updateTrails(dt: Float) {
-        val on = trailsOn > 0f && mode == Mode.ACT
-        for (s in 0 until 2) {
-            val t = fx.trails[s]
-            if (on) {
-                M4.xf(wM[s], 0, -0.206f, .34f, 0f, v3)
-                M4.xf(wM[s], 0, -0.206f, .78f, 0f, v3b)
-                if (s == 1 && axeFlying) { t.n = 0; continue }
-                t.push(v3, v3b, fx.time + dt)
-                val c = if (trailRed) Fx.RED else Fx.GOLD
-                System.arraycopy(c, 0, t.c, 0, 3); t.w = if (trailRed) 1f else .85f
+    /** de vez em quando o boneco revida se você ficar parado perto dele */
+    private fun dummyAttack(dt: Float) {
+        dAtkT -= dt
+        if (dAtkT > 0f) return
+        dAtkT = rnd(7f, 10f)
+        if (mode == Mode.LOCO && distD() < 2.4f && stunT <= 0f) {
+            val d = D; val dx = P[0] - d[0]; val dz = P[2] - d[2]; val l = max(hypot(dx, dz), .01f)
+            bld.dirH = floatArrayOf(-dx / l, -dz / l); bld.tv -= 2.2f
+            audio.sfx("swing3", .7f, .8f)
+            later(.18f) {
+                if (mode == Mode.LOCO) {
+                    hurtClip = if (Random.nextBoolean()) "hit_body_front" else "hit_head_front"
+                    mode = Mode.HURT; modeT = 0f; animator.transition(.06f)
+                    audio.sfx("hit_body", .8f)
+                    if (Random.nextFloat() < .7f) audio.voice(if (Random.nextBoolean()) "argh" else "desgr", true)
+                    shake(.4f)
+                }
             }
         }
-        fx.trailAge = .2f
     }
 
-    private fun updateFx(dt: Float) {
-        // pendentes
-        if (pending.isNotEmpty()) {
-            val now = ArrayList<() -> Unit>()
-            val it = pending.iterator()
-            while (it.hasNext()) { val p = it.next(); if (p.first <= time) { now.add(p.second); it.remove() } }
-            now.forEach { it() }
-        }
-        if (auraT > 0f) {
-            auraT -= dt
-            fx.auraTick(floatArrayOf(P[0], 0f, P[2]), dt, min(1f, auraT * 2f))
-            if (auraT <= 0f) { audio.stop("aura") }
-        } else red = max(0f, red - dt * 1.5f)
-        if (act == null && s4 == S4.OFF && auraT <= 0f) gold = max(0f, gold - dt * 2f)
-        fx.teleOn = if (act?.id == "s3") fx.teleOn else 0f
-        if (!axeFlying) fx.chainOn = false
-        fx.update(dt)
-    }
-
-    fun torchTick(torches: List<FloatArray>, dt: Float) {
-        for (t in torches) {
-            if (Math.random() < dt * 22f) {
-                val p = fx.sprite(floatArrayOf(t[0] + rnd(-.05f, .05f), t[1], t[2] + rnd(-.05f, .05f)), Fx.FLAME, 4, rnd(.28f, .4f), .12f, rnd(.35f, .55f), floatArrayOf(1f, .55f, .2f), .9f, Fx.M_TINT, Fx.Orient.VBILL, rot = 0f)
-                p.vel[1] = rnd(.4f, .9f)
-            }
-            if (Math.random() < dt * 3f) {
-                val p = fx.sprite(floatArrayOf(t[0], t[1] + .3f, t[2]), Fx.SPARK, 1, .04f, .01f, 1f, Fx.GOLD2, 1f)
-                p.vel[1] = rnd(.8f, 1.6f); p.vel[0] = rnd(-.3f, .3f)
-            }
-            if (Math.random() < dt * 6f) fx.sprite(floatArrayOf(t[0], t[1] + .15f, t[2]), Fx.GLOW, 1, .9f, 1f, .3f, floatArrayOf(1f, .5f, .18f), .25f)
-        }
-    }
+    fun torchTick(torches: List<FloatArray>, dt: Float) { for (tc in torches) fx.torch(tc, dt) }
 
     // ---------------- câmera ----------------
     fun shake(a: Float) { shakeA = max(shakeA, a) }
+    private fun flash(a: Float) { flashA = max(flashA, a * .7f) }
+    private fun vig(a: Float) { vigA = max(vigA, a) }
 
     private fun updateCamera(dt: Float) {
         camDistSm += (camDist - camDistSm) * min(1f, dt * 8f)
         val lift = 1.25f + (camDistSm - 6f) * .03f
-        val tx = P[0]; val ty = P[1] + lift; val tz = P[2]
-        camTarget[0] += (tx - camTarget[0]) * min(1f, dt * 10f)
-        camTarget[1] += (ty - camTarget[1]) * min(1f, dt * 10f)
-        camTarget[2] += (tz - camTarget[2]) * min(1f, dt * 10f)
+        camTarget[0] += (P[0] - camTarget[0]) * min(1f, dt * 10f)
+        camTarget[1] += (P[1] + lift - camTarget[1]) * min(1f, dt * 10f)
+        camTarget[2] += (P[2] - camTarget[2]) * min(1f, dt * 10f)
         val cp = cos(camPitch); val sp = sin(camPitch)
         eye[0] = camTarget[0] - sin(camYaw) * cp * camDistSm
         eye[1] = max(.3f, camTarget[1] + sp * camDistSm)
         eye[2] = camTarget[2] - cos(camYaw) * cp * camDistSm
         System.arraycopy(camTarget, 0, look, 0, 3)
-        if (shakeA > .001f) {
-            val s = shakeA * .09f
-            eye[0] += rnd(-s, s); eye[1] += rnd(-s, s); eye[2] += rnd(-s, s)
-            look[0] += rnd(-s, s) * .5f; look[1] += rnd(-s, s) * .5f
-            shakeA *= exp(-dt * 7f)
+        if (shakeA > .003f) {
+            val s = shakeA * .09f * K
+            eye[0] += rnd(-.5f, .5f) * s; eye[1] += rnd(-.5f, .5f) * s; eye[2] += rnd(-.5f, .5f) * s
         }
     }
 
-    fun dummyModel(out: FloatArray) {
-        // T(D) * Rot(tilt) * RotY(dYaw)
-        val fall = dFall * 1.45f
-        val tx = dTilt[0] * .5f + (if (fall > 0f) sin(dYaw + PI.toFloat()) * fall else 0f)
-        val tz = dTilt[1] * .5f + (if (fall > 0f) cos(dYaw + PI.toFloat()) * fall else 0f)
-        val ang = hypot(tx, tz)
-        val r = FloatArray(16); M4.id(r)
-        if (ang > 1e-4f) {
-            // eixo = up × direção da inclinação
-            val ax = tz / ang; val az = -tx / ang
-            val c = cos(ang); val s = sin(ang); val t = 1 - c
-            r[0] = t * ax * ax + c; r[1] = s * az; r[2] = t * ax * az
-            r[4] = -s * az; r[5] = c; r[6] = s * ax
-            r[8] = t * ax * az; r[9] = -s * ax; r[10] = t * az * az + c
-        }
-        val ty = FloatArray(16); M4.trs(ty, 0f, 0f, 0f, dYaw, 1f)
-        val tr = FloatArray(16); M4.id(tr); tr[12] = D[0]; tr[13] = 0f; tr[14] = D[2]
-        val tmp = FloatArray(16); M4.mul(tmp, tr, r); M4.mul(out, tmp, ty)
-    }
-
-    fun isHolding4() = s4 == S4.HOLD
-    fun dummyAlive() = dAlive()
-    fun dummyStunned() = dStun > 0f
+    fun glowGold(s: Int) = max(gold, if (s == 1) thrGlow else 0f)
+    fun isHolding4() = holdOn
 }
