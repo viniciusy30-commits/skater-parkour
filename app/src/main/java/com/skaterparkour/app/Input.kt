@@ -16,6 +16,7 @@ object Input {
     @Volatile var aimActive = false
 
     @Volatile var sens = 1f
+    @Volatile var aimMode = false
     @Volatile var jumpHeld = false
     @Volatile var crouchHeld = false
 

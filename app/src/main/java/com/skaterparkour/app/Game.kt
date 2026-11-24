@@ -19,6 +19,7 @@ class Game(cs: ClipSet, rig: RigData) {
     var camYaw = 0f; private var camPitch = .30f; private var camDist = 4.6f; private var camDistSm = 4.6f
     private val tgt = FloatArray(3)
     var underwater = false
+    private var emoteI = 0
 
     init { M4.id(charM); tgt[0] = player.x; tgt[1] = player.y + 1.2f; tgt[2] = player.z; goStation(0) }
 
@@ -41,9 +42,10 @@ class Game(cs: ClipSet, rig: RigData) {
         camYaw -= cam[0]
         camPitch = clampf(camPitch + cam[1], -.15f, 1.35f)
         camDist = clampf(camDist / cam[2], 2.2f, 14f)
-        var jump = false; var crouch = false; var drop = false
+        var jump = false; var crouch = false; var drop = false; var emote = false; var die = false; var act = false
         for (e in ev) when (e) {
             "jump" -> jump = true; "crouch" -> crouch = true; "drop" -> drop = true
+            "emote" -> emote = true; "die" -> die = true; "act" -> act = true
             "next" -> goStation(station + 1); "prev" -> goStation(station - 1)
         }
         // joystick -> direção no mundo (relativa à câmera)
@@ -58,11 +60,14 @@ class Game(cs: ClipSet, rig: RigData) {
             ctl.mx = nx * m; ctl.mz = nz * m
         } else { ctl.mx = 0f; ctl.mz = 0f }
         ctl.jumpHeld = Input.jumpHeld; ctl.crouchHeld = Input.crouchHeld
+        ctl.aim = Input.aimMode; ctl.aimYaw = camYaw
+        if (emote) emoteI = emoteI % 8 + 1
         // passos fixos de no máximo 1/60 s
         val steps = max(1, ceil(dt / (1f / 60f)).toInt())
         val h = dt / steps
         for (i in 0 until steps) {
             ctl.jump = jump && i == 0; ctl.crouch = crouch && i == 0; ctl.drop = drop && i == 0
+            ctl.emote = if (emote && i == 0) emoteI else 0; ctl.die = die && i == 0; ctl.act = act && i == 0
             player.update(h, ctl)
         }
         ctl.clearEdges()

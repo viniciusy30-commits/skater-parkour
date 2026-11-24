@@ -29,7 +29,7 @@ class World {
     fun groundAt(x: Float, z: Float, r: Float, maxY: Float): Float {
         var best = -1000f
         for (b in boxes) {
-            if (b.y1 > maxY || b.y1 <= best) continue
+            if (b.kind == 3 || b.y1 > maxY || b.y1 <= best) continue
             if (b.containsXZ(x, z, r)) best = b.y1
         }
         return best
@@ -37,7 +37,7 @@ class World {
 
     fun boxUnder(x: Float, z: Float, y: Float): Box? {
         var best: Box? = null
-        for (b in boxes) if (b.containsXZ(x, z, 0.05f) && b.y1 <= y + 0.02f && (best == null || b.y1 > best.y1 + 0.001f || (abs(b.y1 - best.y1) <= 0.001f && b.kind == 2))) best = b
+        for (b in boxes) if (b.kind != 3 && b.containsXZ(x, z, 0.05f) && b.y1 <= y + 0.02f && (best == null || b.y1 > best.y1 + 0.001f || (abs(b.y1 - best.y1) <= 0.001f && b.kind == 2))) best = b
         return best
     }
 
@@ -65,7 +65,7 @@ class World {
     fun probe(x: Float, z: Float, dx: Float, dz: Float, maxD: Float, minTop: Float, maxBase: Float): Hit? {
         var bestT = 1e9f; var bb: Box? = null; var bnx = 0f; var bnz = 0f; var tExit = 0f
         for (b in boxes) {
-            if (b.y1 < minTop || b.y0 > maxBase) continue
+            if (b.kind >= 3 || b.y1 < minTop || b.y0 > maxBase) continue
             var t0 = -1e9f; var t1 = 1e9f; var nx = 0f; var nz = 0f
             // eixo x
             if (abs(dx) < 1e-6f) { if (x < b.x0 || x > b.x1) continue }

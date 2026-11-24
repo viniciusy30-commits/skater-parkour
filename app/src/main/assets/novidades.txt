@@ -1,3 +1,14 @@
+#id 2026-11-24-b
+#titulo Parkour: correr na parede, tic-tac, canos, apoios e mobilidade completa
+- Correr na parede: vertical (sobe e fica pendurado) e horizontal (parede longa, pulo para frente ou a 90°)
+- Tic-tac: sobe na plataforma, passa por cima de muro fino, e pula de parede para parede com o pé de impulso
+- Canos: agarra, sobe, desce, pula para o lado e para cima; apoios (ledges) com pulo lateral, para cima e para trás
+- Pulo longo e de precisão sobre vãos; vários tipos de pouso e deslize (lados alternados)
+- Mobilidade: largada, parada e virada no lugar, andar agachado com transições, strafe em 8 direções (botão MIRAR), hop, emotes (botão EMOTE), morte (botão MORRER)
+- Natação: mais velocidade conforme nada, inclinação nas curvas, nadar de costas/lado, idle extra, ação com faca/martelo (botão AÇÃO), mergulho de altura, afogamento depois de 20 s submerso
+- Mais estações no mapa de testes (use ◀ ▶)
+- Ainda não ligados: Wall_UnderBar, quinas de apoio, vaults extras (Kong360, Dive/Kash), Balance extras e saltos direcionais LU/RU em todas as direções
+
 #id 2026-11-24-a
 #titulo Parkour: personagem novo, mapa de testes e natação
 - Personagem novo (Meshy) com as animações do Mobility Pro, Parkour e Natação

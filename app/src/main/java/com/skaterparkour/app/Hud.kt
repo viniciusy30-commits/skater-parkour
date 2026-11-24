@@ -16,6 +16,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
     private class Btn(val id: String, val label: String, var x: Float = 0f, var y: Float = 0f, var rad: Float = 0f, var held: Boolean = false)
     private val btns = listOf(
         Btn("jump", "PULAR"), Btn("crouch", "AGACHAR"), Btn("drop", "SOLTAR"),
+        Btn("aim", "MIRAR"), Btn("emote", "EMOTE"), Btn("act", "AÇÃO"), Btn("die", "MORRER"),
         Btn("prev", "◀"), Btn("next", "▶"), Btn("gear", "⚙")
     )
     private val gold = 0xFFE9C47E.toInt()
@@ -36,6 +37,10 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         set("jump", w - d(96f), h - d(92f), d(52f))
         set("crouch", w - d(214f), h - d(60f), d(40f))
         set("drop", w - d(168f), h - d(168f), d(36f))
+        set("aim", w - d(300f), h - d(100f), d(34f))
+        set("emote", w - d(60f), h - d(190f), d(30f))
+        set("act", w - d(250f), h - d(176f), d(30f))
+        set("die", w - d(300f), d(32f), d(24f))
         set("prev", w / 2 - d(120f), d(30f), d(20f))
         set("next", w / 2 + d(120f), d(30f), d(20f))
         set("gear", w - d(34f), d(32f), d(18f))
@@ -49,6 +54,10 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
             "jump" -> { Input.jumpHeld = true; Input.press("jump") }
             "crouch" -> { Input.crouchHeld = true; Input.press("crouch") }
             "drop" -> Input.press("drop")
+            "aim" -> Input.aimMode = !Input.aimMode
+            "emote" -> Input.press("emote")
+            "act" -> Input.press("act")
+            "die" -> Input.press("die")
             "prev" -> Input.press("prev")
             "next" -> Input.press("next")
             "gear" -> onSettings()
@@ -165,7 +174,8 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         val rad = b.rad * (if (b.held) .93f else 1f)
         val big = b.rad > d(30f)
         val dim = b.id == "drop" && g.player.st != Player.St.HANG && g.player.st != Player.St.BEAM
-        pFill.color = if (b.held) 0xD0584020.toInt() else if (dim) 0x70100D0B else 0xB0201A14.toInt()
+        val on = b.id == "aim" && Input.aimMode
+        pFill.color = if (b.held || on) 0xD0584020.toInt() else if (dim) 0x70100D0B else 0xB0201A14.toInt()
         c.drawCircle(b.x, b.y, rad, pFill)
         pStroke.strokeWidth = d(2f); pStroke.color = if (dim) 0x66594633 else gold
         c.drawCircle(b.x, b.y, rad, pStroke)
