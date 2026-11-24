@@ -16,6 +16,8 @@ object Input {
     @Volatile var aimActive = false
 
     @Volatile var sens = 1f
+    @Volatile var jumpHeld = false
+    @Volatile var crouchHeld = false
 
     @Synchronized fun addCam(dy: Float, dp: Float) { camYaw += dy; camPitch += dp }
     @Synchronized fun addZoom(f: Float) { zoom *= f }

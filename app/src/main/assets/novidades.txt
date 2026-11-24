@@ -1,3 +1,12 @@
+#id 2026-11-24-a
+#titulo Parkour: personagem novo, mapa de testes e natação
+- Personagem novo (Meshy) com as animações do Mobility Pro, Parkour e Natação
+- Mapa de testes com uma estação para cada manobra: vault baixo e alto, subir plataformas, pendurar na parede e escalar, trave de equilíbrio, pulos entre pilares, queda com rolamento, deslizar e piscina
+- Use as setas ◀ ▶ no topo para teleportar entre as estações
+- Botões: PULAR (pulo contextual: pula, vault, sobe ou pendura conforme o obstáculo), AGACHAR (agacha, desliza correndo, mergulha na água) e SOLTAR (larga a beirada)
+- Piscina com parte rasa e funda: cai, afunda, nada, mergulha segurando AGACHAR, sobe segurando PULAR e sai pela borda
+- Ainda faltam: correr na parede, pulo de parede para parede, cano e as demais variações
+
 #id 2026-11-23-b
 #titulo Mapa Howling Abyss com texturas do Z!MOBA
 - O campo de treino agora é o mapa Howling Abyss (modelo de Uriel Esquivel Cobos, CC-BY-4.0): ponte, torres, nexus, estátuas, abismo e montanhas
