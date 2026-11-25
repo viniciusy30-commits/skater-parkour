@@ -1,3 +1,25 @@
+#id 2026-11-25-n
+#titulo Machado de pé e mãos consertadas
+- O machado agora fica de pé nas mãos (punho girado como ao empunhar), não mais deitado e torto
+- Os dedos não esticam mais como pernas de aranha durante os golpes, a corrida e os pulos
+- Punho limpo: dedos separados em volta do cabo, sem atravessar a arma
+- Dedão dobrado por cima dos dedos (não fica mais reto)
+
+#id 2026-11-25-m
+#titulo Machado corrigido: lâmina, cores e mãos
+- A lâmina grande do machado agora aponta para o lado certo, na frente do golpe
+- Metal do machado no mesmo preto da armadura e dourado igual ao da roupa; as runas continuam vermelhas
+- Tatuagens do guerreiro agora são vermelhas, na cor das runas do machado
+- Punho fechado de verdade em volta do cabo, nas duas mãos, com o polegar por cima
+- Rosto sem tatuagem vermelha
+
+#id 2026-11-25-l
+#titulo Runeblade War Axe nas mãos do guerreiro
+- O guerreiro agora empunha a Runeblade War Axe (machado de lâmina dupla com runas vermelhas brilhantes), um em cada mão
+- A arma segue o punho em todas as animações de movimento, combate e skills, com os dedos fechados em volta do cabo
+- Machado reduzido de 787 mil para 10 mil triângulos por arma, mantendo os detalhes e as runas da textura original
+- Textura do personagem agora tem 2048x4096: o guerreiro em cima e a arma embaixo
+
 #id 2026-11-25-k
 #titulo Esqueleto do Sentinel consertado
 - Cabeça agora é rígida e separada do pescoço: o queixo e o rosto não esticam mais para o lado
