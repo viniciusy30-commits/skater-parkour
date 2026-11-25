@@ -148,7 +148,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         pText.textSize = d(13f); pText.color = 0xFFFFFFFF.toInt()
         c.drawText(g.stationName(), width / 2f, d(36f), pText)
         pText.textSize = d(10f); pText.color = 0xCCE9C47E.toInt()
-        c.drawText("${g.station + 1}/${TestMap.stations.size}", width / 2f, d(50f), pText)
+        c.drawText("${g.station + 1}/${g.stations.size}", width / 2f, d(50f), pText)
         // depuração
         pText.textAlign = Paint.Align.LEFT; pText.textSize = d(10f); pText.color = 0xCCFFFFFF.toInt()
         c.drawText(g.status(), d(12f), d(18f), pText)

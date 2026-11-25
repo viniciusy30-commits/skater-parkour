@@ -17,7 +17,9 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
 
     private lateinit var rig: RigData
     private lateinit var body: WMesh
-    private lateinit var stage: Stage
+    private lateinit var arena: ArenaMesh
+    private var progSky = 0; private var skyVao = 0
+    private val ivp = FloatArray(16)
     private var texBody = 0; private var boneTex = 0; private var progSkin = 0
     private var nJ = 95
     private lateinit var boneBuf: java.nio.FloatBuffer
@@ -33,9 +35,14 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
             val cs = ClipSet(Gl.readAsset(ctx, "w/anim.bin"))
             body = WMesh(ctx, "w/char.msh", true)
             texBody = Gl.texture(ctx, "w/char.jpg")
-            loadMsg = "Montando o mapa de testes…"
-            val g = Game(cs, rig)
-            stage = Stage(g.world); stage.init()
+            loadMsg = "Montando a arena…"
+            val g = Game(cs, rig, Arena.build(ctx), Arena.stations)
+            arena = ArenaMesh(ctx)
+            progSky = Gl.program(Shaders.SKY_VS, Shaders.SKY_FS)
+            skyVao = Gl.gen(::glGenVertexArrays); glBindVertexArray(skyVao)
+            val sq = Gl.floats(8); sq.put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)); sq.flip()
+            val sqb = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, sqb); glBufferData(GL_ARRAY_BUFFER, 32, sq, GL_STATIC_DRAW)
+            glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, false, 8, 0); glBindVertexArray(0)
             progSkin = Gl.program(Shaders.SKIN_VS, Shaders.TEX_FS)
             for (n in listOf("uBones", "uTex", "uVP", "uM", "uCtr", "uExt", "uCam", "uMetal", "uRune", "uRim", "uTm", "uRC")) u[n] = glGetUniformLocation(progSkin, n)
             boneBuf = Gl.floats(nJ * 16)
@@ -70,7 +77,16 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
         glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); glDisable(GL_CULL_FACE)
 
-        stage.drawSolid(vp, g.eye)
+        // céu
+        Matrix.invertM(ivp, 0, vp, 0)
+        glDisable(GL_DEPTH_TEST); glDepthMask(false)
+        glUseProgram(progSky)
+        glUniformMatrix4fv(glGetUniformLocation(progSky, "uIVP"), 1, false, ivp, 0)
+        glUniform3fv(glGetUniformLocation(progSky, "uCam"), 1, g.eye, 0)
+        glBindVertexArray(skyVao); glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); glBindVertexArray(0)
+        glDepthMask(true); glEnable(GL_DEPTH_TEST)
+
+        arena.draw(vp, g.eye)
 
         boneBuf.clear(); boneBuf.put(g.skel.skin, 0, nJ * 16); boneBuf.flip()
         glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, boneTex)
@@ -85,6 +101,5 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
         body.draw()
         glBindVertexArray(0)
 
-        stage.drawWater(vp, g.eye)
     }
 }

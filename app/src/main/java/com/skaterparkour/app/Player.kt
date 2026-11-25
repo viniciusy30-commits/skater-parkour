@@ -488,7 +488,7 @@ class Player(val w: World, val cs: ClipSet) {
 
     private fun findLedgeAhead(maxD: Float, dyMin: Float, dyMax: Float): Face? {
         var best: Face? = null
-        for (b in w.boxes) {
+        for (b in w.special) {
             if (b.kind != 4) continue
             val dy = b.y1 - y; if (dy < dyMin || dy > dyMax) continue
             val f = faceOf(b, maxD) ?: continue
@@ -520,7 +520,7 @@ class Player(val w: World, val cs: ClipSet) {
 
     private fun findPipe(maxD: Float): Triple<Box, Float, Float>? {
         var best: Triple<Box, Float, Float>? = null; var bd = 1e9f
-        for (b in w.boxes) {
+        for (b in w.special) {
             if (b.kind != 3) continue
             if (y + 1.4f > b.y1 + 0.2f || y + 1.8f < b.y0) continue
             val cx = (b.x0 + b.x1) / 2; val cz = (b.z0 + b.z1) / 2
@@ -602,7 +602,7 @@ class Player(val w: World, val cs: ClipSet) {
             val axisPos = if (abs(pipeNx) > 0.5f) -sin(yaw) else cos(yaw)
             val dirW = (if (left) 1f else -1f) * (if (axisPos >= 0) 1f else -1f)
             var tgt: Box? = null; var bd = 1e9f
-            for (o in w.boxes) {
+            for (o in w.special) {
                 if (o.kind != 3 || o === b) continue
                 val oc = if (abs(pipeNx) > 0.5f) (o.z0 + o.z1) / 2 else (o.x0 + o.x1) / 2
                 val d = (oc - tcur) * dirW; if (d < 1.0f || d > 2.4f) continue
@@ -1052,7 +1052,7 @@ class Player(val w: World, val cs: ClipSet) {
     private fun sameWall(b: Box) = b.kind == 4 && b !== hBox && abs(frontCoord(b) - frontCoord(hBox!!)) < 0.15f
     private fun ledgeFind(dLat: Float, latMin: Float, latMax: Float, dyMin: Float, dyMax: Float): Box? {
         var best: Box? = null; var bd = 1e9f
-        for (b in w.boxes) {
+        for (b in w.special) {
             if (!sameWall(b)) continue
             val dy = b.y1 - hTop; if (dy < dyMin || dy > dyMax) continue
             val d = (centerS(b) - hS) * dLat; if (d < latMin || d > latMax) continue

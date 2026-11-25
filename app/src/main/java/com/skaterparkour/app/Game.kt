@@ -3,8 +3,7 @@ package com.skaterparkour.app
 import kotlin.math.*
 
 /** Mapa de testes + jogador + câmera. Roda na thread do GL. */
-class Game(cs: ClipSet, rig: RigData) {
-    val world = TestMap.build()
+class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Station>) {
     val player = Player(world, cs)
     val skel = Skeleton(rig)
     private val anim = Animator(cs)
@@ -23,12 +22,12 @@ class Game(cs: ClipSet, rig: RigData) {
 
     init { M4.id(charM); tgt[0] = player.x; tgt[1] = player.y + 1.2f; tgt[2] = player.z; goStation(0) }
 
-    fun stationName() = TestMap.stations[station].name
+    fun stationName() = stations[station].name
 
     private fun goStation(i: Int) {
-        val n = TestMap.stations.size
+        val n = stations.size
         station = ((i % n) + n) % n
-        val s = TestMap.stations[station]
+        val s = stations[station]
         player.teleport(s.x, s.y, s.z, s.yaw)
         camYaw = s.yaw
         tgt[0] = s.x; tgt[1] = s.y + 1.2f; tgt[2] = s.z
@@ -71,6 +70,9 @@ class Game(cs: ClipSet, rig: RigData) {
             player.update(h, ctl)
         }
         ctl.clearEdges()
+
+        // caiu para fora da arena: volta ao ponto de partida
+        if (player.y < -25f) goStation(station)
 
         // animação
         if (player.clipChanged) { anim.changed(player.xfade); player.clipChanged = false }

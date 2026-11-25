@@ -1,3 +1,11 @@
+#id 2026-11-25-a
+#titulo Nova arena: o coliseu grego é o mapa principal
+- Mapa principal agora é a arena grega de mármore e ouro (colunas, arquibancadas, arcos), com céu e iluminação própria
+- Colisão sobre a geometria real da arena: piso, degraus das arquibancadas, colunas e paredes
+- Pontos de partida no menu (◀ ▶): centro, os quatro lados, arquibancada e topo do coliseu
+- Cair para fora da arena leva de volta ao ponto de partida
+- O mapa de testes antigo saiu da tela, mas o código continua no projeto
+
 #id 2026-11-24-b
 #titulo Parkour: correr na parede, tic-tac, canos, apoios e mobilidade completa
 - Correr na parede: vertical (sobe e fica pendurado) e horizontal (parede longa, pulo para frente ou a 90°)
