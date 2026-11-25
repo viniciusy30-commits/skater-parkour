@@ -37,7 +37,7 @@ class Player(val w: World, val cs: ClipSet) {
             "jog" to JumpDef("m:Jog_F_Jump", 0.0f, 0.23f, 0.33f, 0.90f, 0.60f, 1.0f),
             "run" to JumpDef("m:Run_F_Jump", 0.08f, 0.40f, 0.90f, 1.30f, 0.85f, 1.0f)
         )
-        val SPEED_WALK = 1.5f; val SPEED_JOG = 2.5f; val SPEED_RUN = 4.95f; val SPEED_CROUCH = 1.25f
+        val SPEED_WALK = 1.5f; val SPEED_JOG = 2.5f; val SPEED_RUN = 6.4f; val SPEED_CROUCH = 1.25f
         val VAULTS_L = arrayOf("Speed_L_Vault", "Dash_Vault", "Thief_L_Vault", "Safety_L_Vault", "TwoHand_L_Vault", "Revers_L_Vault")
         val VAULTS_R = arrayOf("Speed_R_Vault", "Dash_Vault", "Thief_R_Vault", "Safety_R_Vault", "TwoHand_R_Vault", "Revers_R_Vault")
         val VAULT_TOP = mapOf("Speed_L_Vault" to 1.05f, "Speed_R_Vault" to 1.05f, "Dash_Vault" to 0.95f, "Thief_L_Vault" to 0.9f, "Thief_R_Vault" to 0.9f,
@@ -226,7 +226,7 @@ class Player(val w: World, val cs: ClipSet) {
                 if (mvBegin(4, if (crouched) "m:Stand_Relaxed_to_Crouch" else "m:Crouch_to_Stand_Relaxed", 2.0f, 0f, 0f, 1f, 1f)) return
             } else crouched = !crouched
         }
-        val spdTier = if (crouched) SPEED_CROUCH else if (m < 0.45f) SPEED_WALK else if (m < 0.8f) SPEED_JOG else SPEED_RUN
+        val spdTier = SPEED_RUN * (0.5f + 0.5f * min(1f, max(0f, m - 0.2f) / 0.6f))
         // ---- virar / largar / parar (modo livre)
         if (!aimOn) {
             mdir = yaw
@@ -253,14 +253,14 @@ class Player(val w: World, val cs: ClipSet) {
             val ta = atan2(c.mx, c.mz)
             if (!aimOn) {
                 diff = wrapA(ta - yaw)
-                val rate = if (speed < 0.5f) 9f else 13f
+                val rate = 32f
                 yaw = wrapA(yaw + clampf(diff, -rate * dt, rate * dt)); mdir = yaw
             } else diff = wrapA(ta - mdir)
         }
-        val tg = if (!aimOn && abs(diff) > 1.7f && speed > 2.0f) min(tgt, 1.0f) else tgt
+        val tg = tgt
         val k = max(0.25f, cos(min(abs(diff), 1.5f)))
-        val goal = tg * (if (abs(diff) > 0.9f) k else 1f) * (if (wadeD > 0.3f) 0.7f else 1f)
-        val acc = if (goal > speed) 16f else 26f
+        val goal = tg
+        val acc = if (goal > speed) 70f else 90f
         speed += clampf(goal - speed, -acc * dt, acc * dt)
         if (speed < 0.02f && tg == 0f) speed = 0f
         vx = sin(mdir) * speed; vz = cos(mdir) * speed

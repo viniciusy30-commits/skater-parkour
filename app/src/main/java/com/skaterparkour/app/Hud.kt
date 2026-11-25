@@ -18,11 +18,11 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         Btn("jump", "PULAR"), Btn("crouch", "AGACHAR"), Btn("drop", "SOLTAR"),
         Btn("aim", "MIRAR"), Btn("emote", "EMOTE"), Btn("act", "AÇÃO"), Btn("die", "MORRER"),
         Btn("prev", "◀"), Btn("next", "▶"), Btn("gear", "⚙"),
-        Btn("atk", "ATQ"), Btn("s1", "1"), Btn("s2", "2"), Btn("s3", "3"), Btn("s4", "4"), Btn("ult", "ULT"), Btn("mode", "MODO")
+        Btn("atk", "ATQ"), Btn("s1", "1"), Btn("s2", "2"), Btn("s3", "3"), Btn("s4", "4"), Btn("ult", "ULT"), Btn("dash", "ESQ"), Btn("mode", "MODO")
     )
-    private val cbIds = setOf("atk", "s1", "s2", "s3", "s4", "ult")
+    private val cbIds = setOf("atk", "s1", "s2", "s3", "s4", "ult", "dash")
     private val pkIds = setOf("jump", "crouch", "drop", "aim", "emote", "act", "die")
-    private fun vis(b: Btn): Boolean = if (b.id in cbIds) Input.combatMode else if (b.id in pkIds) !Input.combatMode else true
+    private fun vis(b: Btn): Boolean = if (b.id in pkIds || b.id == "mode") false else true
     private val rf = RectF()
     private val tp = FloatArray(2)
     private val gold = 0xFFE9C47E.toInt()
@@ -57,6 +57,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         set("s3", w - d(148f), h - d(206f), d(33f))
         set("s4", w - d(80f), h - d(232f), d(33f))
         set("ult", w - d(290f), h - d(110f), d(36f))
+        set("dash", w - d(36f), h - d(168f), d(28f))
     }
 
     private fun hit(x: Float, y: Float) = btns.firstOrNull { vis(it) && hypot(x - it.x, y - it.y) < it.rad * 1.2f }
@@ -74,7 +75,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
             "prev" -> Input.press("prev")
             "next" -> Input.press("next")
             "gear" -> onSettings()
-            "atk", "s1", "s2", "s3", "s4", "ult" -> Input.press(b.id)
+            "atk", "s1", "s2", "s3", "s4", "ult", "dash" -> Input.press(b.id)
             "mode" -> { Input.combatMode = !Input.combatMode; Input.jumpHeld = false; Input.crouchHeld = false; Input.aimMode = false }
         }
     }
@@ -201,7 +202,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         if (b.label.length <= 2) pText.textSize = rad * 1.0f
         val lab = if (b.id == "mode") (if (Input.combatMode) "PARK" else "LUTA") else b.label
         c.drawText(lab, b.x, b.y + pText.textSize * .34f, pText)
-        val ci = when (b.id) { "s1" -> 0; "s2" -> 1; "s3" -> 2; "s4" -> 3; "ult" -> 4; else -> -1 }
+        val ci = when (b.id) { "s1" -> 0; "s2" -> 1; "s3" -> 2; "s4" -> 3; "ult" -> 4; "dash" -> 5; else -> -1 }
         if (ci >= 0) {
             val fr = g.combat.cdFrac(ci)
             rf.set(b.x - rad, b.y - rad, b.x + rad, b.y + rad)

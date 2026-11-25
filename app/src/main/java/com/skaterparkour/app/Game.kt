@@ -114,7 +114,7 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
             "jump" -> jump = false; "crouch" -> crouch = false; "drop" -> drop = false
             "emote" -> emote = false; "die" -> die = true; "act" -> act = false
             "next" -> goStation(station + 1); "prev" -> goStation(station - 1)
-            "atk", "s1", "s2", "s3", "s4", "ult" -> cbEv.add(e)
+            "atk", "s1", "s2", "s3", "s4", "ult", "dash" -> cbEv.add(e)
         }
         // joystick -> direção no mundo (relativa à câmera)
         val jx = Input.jx; val jy = Input.jy
@@ -130,6 +130,8 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         ctl.jumpHeld = Input.jumpHeld; ctl.crouchHeld = Input.crouchHeld
         ctl.aim = Input.aimMode; ctl.aimYaw = camYaw
         if (emote) emoteI = emoteI % 8 + 1
+        combat.mvx = ctl.mx; combat.mvz = ctl.mz
+        if (combat.busy && combat.cancelable() && hypot(ctl.mx, ctl.mz) > 0.6f) combat.interrupt()
         combat.update(dt, cbEv, player.st == Player.St.LOCO)
         if (combat.busy) { ctl.mx = 0f; ctl.mz = 0f; jump = false; crouch = false; drop = false; emote = false; die = false; act = false }
         // passos fixos de no máximo 1/60 s
@@ -163,8 +165,8 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
                     lt = if (moving && nowMoving) (lt / od) % 1f * csr[want].dur else 0f
                     lclip = want
                 }
-                val ref = if (lclip.startsWith("c:walk")) 1.6f else if (lclip.startsWith("c:move_run")) 4.4f else 0f
-                val rate = if (ref > 0f) (if (lclip.startsWith("c:walk")) (sp / ref).coerceIn(0.7f, 1.4f) else (sp / ref).coerceIn(0.8f, 1.25f)) else 1f
+                val ref = if (lclip.startsWith("c:walk")) 1.6f else if (lclip.startsWith("c:move_run")) 4.6f else 0f
+                val rate = if (ref > 0f) (if (lclip.startsWith("c:walk")) (sp / ref).coerceIn(0.7f, 1.4f) else (sp / ref).coerceIn(0.8f, 1.6f)) else 1f
                 lt += dt * rate
                 pc = lclip; tt = lt; lp = true
             } else { pc = warriorClip(player.clip); tt = player.t; lp = player.loop; lclip = ""; lt = 0f }

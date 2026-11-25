@@ -41,9 +41,11 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     var ultT = 0f
     var guard = false
 
-    private val cdLeft = FloatArray(5)
-    private val cdMax = floatArrayOf(6f, 10f, 12f, 12f, 60f)
-    private val cost = floatArrayOf(30f, 40f, 55f, 50f, 100f)
+    private val cdLeft = FloatArray(6)
+    /** Personagem ativo: toda a sensação (ritmo, recargas, esquiva) vem desta ficha. */
+    var ch: ChampDef = Champions.WARRIOR
+    private val cdMax get() = ch.cdMax
+    private val cost get() = ch.cost
     private var segs: List<Seg> = emptyList()
     private var evs: List<Ev> = emptyList()
     private var segI = 0; private var segT = 0f; private var skT = 0f
@@ -54,8 +56,59 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private var deadT = 0f
     private var parried = false
     var onRevive: (() -> Unit)? = null
+    var combo = 0; private var comboT = 0f
+    var mvx = 0f; var mvz = 0f          // direção do analógico (mundo), para a esquiva
+    private var invulT = 0f
+    private var bufE = ""; private var bufT = -99f
+    private var cancelT = 1e9f
+    private var lungeT = 0f; private var lvx = 0f; private var lvz = 0f
 
-    private val BSEG = arrayOf(floatArrayOf(0f, 1.15f), floatArrayOf(1.15f, 1.75f), floatArrayOf(1.75f, 2.55f), floatArrayOf(2.55f, 4.63f))
+    /** Pode cancelar a ação atual (já bateu o golpe e está só na recuperação). */
+    fun cancelable(): Boolean = busy && (kind == "basic" || kind == "s1" || kind == "s2" || kind == "s3" || kind == "s4" || kind == "dash") && skT >= cancelT
+    /** Corta a recuperação (usado ao mexer o analógico). */
+    fun interrupt() { if (cancelable()) { busy = false; kind = ""; guard = false; bufE = ""; basicEnd = clock } }
+    private fun timeScale(): Float = when (kind) { "basic" -> ch.basicScale; "dash" -> ch.dashScale; "ult" -> ch.ultScale; "hurt", "dead" -> 1f; else -> ch.skillScale }
+
+    private fun exec(e: String) {
+        when (e) {
+            "atk" -> doAtk()
+            "dash" -> doDash()
+            "s1" -> cast(0); "s2" -> cast(1); "s3" -> cast(2); "s4" -> cast(3); "ult" -> cast(4)
+        }
+    }
+    private fun handle(e: String) {
+        if (kind == "dead") return
+        if (e == "dash") { if (kind != "ult") exec(e); return }   // esquiva cancela quase tudo, na hora
+        if (!busy || cancelable()) exec(e) else { bufE = e; bufT = clock }
+    }
+    private fun doDash() {
+        if (kind == "dead" || kind == "ult" || !canCast(5)) return
+        cdLeft[5] = cdMax[5]
+        val m = hypot(mvx, mvz)
+        val dir = if (m > 0.2f) atan2(mvx, mvz) else player.yaw
+        player.yaw = dir
+        guard = false; bufE = ""
+        beginSeq("dash", listOf(Seg("c:roll_front", 0f, 0.55f, 0.04f)), emptyList(), false, 0.2f)
+        lungeT = ch.dashTime; lvx = sin(dir) * ch.dashDist / ch.dashTime; lvz = cos(dir) * ch.dashDist / ch.dashTime
+        invulT = ch.invul
+        sfx("swing1", 0.6f, 1.4f)
+        fx.add(Fx(0, player.x, player.y, player.z, 1.4f, 0.35f, WHITE))
+    }
+    private fun doAtk() {
+        val inBasic = busy && kind == "basic"
+        val idx = if (inBasic) (basicIdx + 1) % 4 else if (busy) 0 else if (clock - basicEnd > 1.8f) 0 else (basicIdx + 1) % 4
+        startBasic(idx, inBasic)
+    }
+    /** Avanço automático até o inimigo: o golpe sempre conecta sem precisar de precisão. */
+    private fun lunge(maxD: Float) {
+        val f = foe; if (f.state == 5) return
+        val dx = f.x - player.x; val dz = f.z - player.z; val d = hypot(dx, dz)
+        val go = (d - 1.9f).coerceIn(0f, maxD)
+        if (go < 0.15f) return
+        lungeT = 0.14f; lvx = dx / d * go / 0.14f; lvz = dz / d * go / 0.14f
+    }
+
+    private val BSEG get() = ch.basicSegs
     private val GOLD = 0xFFE9C47E.toInt(); private val RED = 0xFFE0402A.toInt(); private val EARTH = 0xFFC08040.toInt(); private val WHITE = 0xFFFFFFFF.toInt()
 
     fun cdFrac(i: Int): Float = if (cdLeft[i] <= 0f) 0f else cdLeft[i] / cdMax[i]
@@ -79,21 +132,24 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     // ------------------------------------------------------------------------------------ entradas
     fun update(dtIn: Float, presses: List<String>, canStart: Boolean) {
         clock += dtIn
-        for (i in 0 until 5) if (cdLeft[i] > 0f) cdLeft[i] -= dtIn
-        mana = min(maxMana, mana + 7f * dtIn)
+        for (i in 0 until 6) if (cdLeft[i] > 0f) cdLeft[i] -= dtIn
+        mana = min(maxMana, mana + ch.manaRegen * dtIn)
         if (flash > 0f) flash = max(0f, flash - dtIn * 2.5f)
         if (shake > 0f) shake = max(0f, shake - dtIn * 3.5f)
         if (ultT > 0f) ultT -= dtIn
+        if (invulT > 0f) invulT -= dtIn
+        if (comboT > 0f) { comboT -= dtIn; if (comboT <= 0f) combo = 0 }
         for (e in presses) {
             if (!canStart && !busy) continue
-            when (e) {
-                "atk" -> pressAtk()
-                "s1" -> cast(0); "s2" -> cast(1); "s3" -> cast(2); "s4" -> cast(3); "ult" -> cast(4)
-            }
+            handle(e)
         }
         var dt = dtIn
         if (hitstop > 0f) { hitstop -= dtIn; dt = 0f }
         stepSeq(dt)
+        if (bufE != "") {
+            if (clock - bufT > 0.45f) bufE = ""
+            else if (!busy || cancelable()) { if (busy || canStart) { val e = bufE; bufE = ""; exec(e) } }
+        }
         updateFoe(dt)
         var k = 0
         while (k < fx.size) { val f = fx[k]; f.age += dtIn; if (f.age >= f.life) fx.removeAt(k) else k++ }
@@ -101,6 +157,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         while (k < pops.size) { val p = pops[k]; p.age += dtIn; if (p.age >= 1.1f) pops.removeAt(k) else k++ }
     }
 
+    @Suppress("unused")
     private fun pressAtk() {
         if (kind == "dead") return
         if (busy && kind == "basic") { basicQ = true; return }
@@ -114,13 +171,13 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private fun startBasic(idx: Int, cont: Boolean) {
         basicIdx = idx; basicQ = false
         val s0 = BSEG[idx][0]; val s1 = BSEG[idx][1]
-        faceFoe()
+        faceFoe(); lunge(ch.lungeMax); basicEnd = clock
         val ev = ArrayList<Ev>()
         fun hit(clipT: Float, dmg: Float, big: Boolean) {
             ev.add(Ev(clipT - s0 - 0.06f) { sfx("swing" + (1 + (idx % 3)), 0.8f) })
             ev.add(Ev(clipT - s0) {
                 val h = hitFoe(player.x, player.z, 3.3f, dmg, if (big) 1 else 0, if (big) 1.6f else 0.6f)
-                if (h) { sfx("axe_hit" + (1 + (idx % 3)), 1f); addShake(if (big) 0.45f else 0.2f); if (big) hitstop = 0.05f }
+                if (h) { sfx("axe_hit" + (1 + (idx % 3)), 1f); addShake(if (big) 0.45f else 0.2f); if (big) hitstop = 0.04f }
             })
         }
         when (idx) {
@@ -129,25 +186,26 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             2 -> hit(2.17f, 10f, false)
             else -> { hit(2.83f, 10f, false); hit(3.23f, 18f, true) }
         }
-        beginSeq("basic", listOf(Seg("c:Combo_04", s0, s1, 0.12f)), ev, cont)
+        beginSeq("basic", listOf(Seg("c:Combo_04", s0, s1, 0.07f)), ev, cont, ch.basicCancel[idx])
     }
 
     private fun cast(i: Int) {
-        if (busy && kind != "basic") return
         if (!canCast(i)) return
+        if (busy && kind == "dead") return
         mana -= cost[i]; cdLeft[i] = cdMax[i]
-        faceFoe()
+        faceFoe(); if (i == 0 || i == 2 || i == 3) lunge(if (i == 3) 1.5f else 3.5f)
         when (i) {
             0 -> skill1(); 1 -> skill2(); 2 -> skill3(); 3 -> skill4(); else -> ultimate()
         }
     }
 
-    private fun beginSeq(name: String, s: List<Seg>, e: List<Ev>, cont: Boolean) {
+    private fun beginSeq(name: String, s: List<Seg>, e: List<Ev>, cont: Boolean, cancel: Float = 1e9f) {
         kind = name; segs = s; evs = e
         for (x in e) x.done = false
         segI = 0; segT = 0f; skT = 0f; busy = true; guard = false
+        cancelT = cancel
         clip = s[0].clip; t = s[0].start; loop = false
-        if (!cont) { changed = true; fade = s[0].fade }
+        changed = true; fade = if (cont) 0.06f else s[0].fade
     }
 
     private fun stepSeq(dt: Float) {
@@ -160,8 +218,14 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             }
             return
         }
+        if (lungeT > 0f && dt > 0f) {
+            val st = min(dt, lungeT); lungeT -= st
+            val p = floatArrayOf(player.x + lvx * st, player.y, player.z + lvz * st)
+            player.w.pushOut(p, player.y, Player.R, Player.H, Player.STEP); player.x = p[0]; player.z = p[2]
+        }
         if (!busy) return
-        skT += dt; segT += dt
+        val ts = dt * timeScale()
+        skT += ts; segT += ts
         val s = segs[segI]
         val len = max(0.01f, s.end - s.start)
         t = s.start + min(segT, len)
@@ -178,10 +242,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private fun finish() {
         val wasBasic = kind == "basic"
         busy = false; guard = false
-        if (wasBasic) {
-            basicEnd = clock
-            if (basicQ && basicIdx < 3) { startBasic(basicIdx + 1, true); return }
-        }
+        if (wasBasic) basicEnd = clock
         kind = ""
     }
 
@@ -209,7 +270,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             sfx("s1_impact")
             if (hitFoe(player.x, player.z, 6f, 20f, 1, 1f)) { addShake(0.5f); hitstop = 0.06f; addFlash(0.12f, 0xFFFFD0C8.toInt()) }
         })
-        beginSeq("s1", listOf(Seg("c:attack_03", 0f, 1.75f, 0.15f)), ev, false)
+        beginSeq("s1", listOf(Seg("c:attack_03", 0f, 1.75f, 0.12f)), ev, false, 1.0f)
     }
 
     private fun skill2() {
@@ -224,7 +285,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             ring(player.x, player.z, 5f, 0.7f, GOLD)
             addShake(1f); hitstop = 0.08f
         })
-        beginSeq("s2", listOf(Seg("c:defence", 0f, 0.42f, 0.12f), Seg("c:attack_07", 0.15f, 2.0f, 0.2f)), ev, false)
+        beginSeq("s2", listOf(Seg("c:defence", 0f, 0.42f, 0.12f), Seg("c:attack_07", 0.15f, 2.0f, 0.15f)), ev, false, 1.12f)
     }
 
     private fun skill3() {
@@ -240,9 +301,9 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             val cx = player.x + fwdX() * 1.8f; val cz = player.z + fwdZ() * 1.8f
             hitFoe(cx, cz, 3.6f, 22f, 2, 2f)
             ring(cx, cz, 3.8f, 0.7f, EARTH)
-            addShake(1f); hitstop = 0.13f; addFlash(0.25f, 0xFFFFD0C8.toInt())
+            addShake(1f); hitstop = 0.09f; addFlash(0.25f, 0xFFFFD0C8.toInt())
         })
-        beginSeq("s3", listOf(Seg("c:attack_05", 0f, 2.7f, 0.15f)), ev, false)
+        beginSeq("s3", listOf(Seg("c:attack_05", 0f, 2.7f, 0.12f)), ev, false, 1.45f)
     }
 
     private fun skill4() {
@@ -265,7 +326,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             sfx("axe_hit3"); sfx("impact")
             if (hitFoe(player.x, player.z, 3.4f, 25f, 1, 1.5f)) { addShake(0.6f); hitstop = 0.07f }
         })
-        beginSeq("s4", listOf(Seg("c:throw", 0f, 0.73f, 0.12f), Seg("c:attack_08", 0f, 1.2f, 0.14f)), ev, false)
+        beginSeq("s4", listOf(Seg("c:throw", 0f, 0.73f, 0.12f), Seg("c:attack_08", 0f, 1.2f, 0.12f)), ev, false, 1.35f)
     }
 
     private fun ultimate() {
@@ -281,7 +342,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
                 else { sfx("ult_slam", 0.8f + i * 0.08f); sfx("ult_debris", 0.55f + i * 0.08f) }
                 hitFoe(player.x, player.z, 5f, if (last) 30f else 14f, if (last) 2 else 1, if (last) 4f else 1.2f)
                 ring(player.x + fwdX() * 1.5f, player.z + fwdZ() * 1.5f, if (last) 7f else 3.5f + i * 0.6f, 0.7f, RED)
-                addShake(if (last) 3f else 1.5f + i * 0.3f); hitstop = if (last) 0.24f else 0.09f
+                addShake(if (last) 3f else 1.5f + i * 0.3f); hitstop = if (last) 0.16f else 0.06f
                 if (last) addFlash(0.35f, 0xFFFF2A1A.toInt())
             })
         }
@@ -294,8 +355,12 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         val f = foe
         if (f.state == 5) return false
         if (hypot(f.x - cx, f.z - cz) > radius + 0.4f) return false
-        f.hp -= amount
-        pop(f.x, f.y + 2.1f, f.z, "-" + amount.toInt(), if (amount >= 20f) 0xFFFFC040.toInt() else WHITE)
+        combo++; comboT = ch.comboWindow
+        mana = min(maxMana, mana + (if (amount >= 18f) 8f else 4f))
+        val dmg = amount * (1f + min(combo - 1, 12) * ch.comboBonus)
+        f.hp -= dmg
+        pop(f.x, f.y + 2.1f, f.z, "-" + dmg.toInt(), if (dmg >= 20f) 0xFFFFC040.toInt() else WHITE)
+        if (combo >= 3 && combo % 3 == 0) pop(player.x, player.y + 2.7f, player.z, "COMBO x$combo", GOLD)
         val dx = f.x - player.x; val dz = f.z - player.z; val d = max(0.1f, hypot(dx, dz))
         f.vx += dx / d * push * 4f; f.vz += dz / d * push * 4f
         if (f.hp <= 0f) {
@@ -317,6 +382,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private fun foeHitsPlayer() {
         if (kind == "dead") return
         val f = foe
+        if (invulT > 0f) { pop(player.x, player.y + 2.1f, player.z, "ESQUIVOU!", WHITE); mana = min(maxMana, mana + 10f); cdLeft[5] = 0f; return }
         if (guard) {
             sfx("parry"); sfx("impact", 0.8f)
             parried = true
@@ -325,7 +391,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             addShake(0.5f); hitstop = 0.07f; addFlash(0.2f, 0xFFFFE9B0.toInt())
             return
         }
-        hp -= 10f
+        hp -= 10f; combo = 0
         sfx("hit_body"); addShake(0.4f); addFlash(0.18f, 0xFFFF2A1A.toInt())
         pop(player.x, player.y + 2.1f, player.z, "-10", RED)
         if (hp <= 0f) {
@@ -370,13 +436,13 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
                 f.stT += dt
                 if (d > 0.05f && f.stT < 0.5f) f.yaw = atan2(dx, dz)
                 if (!f.atkHit && f.stT >= 0.67f) { f.atkHit = true; if (d <= 3.3f) foeHitsPlayer() }
-                if (f.stT >= 1.3f) { f.state = 0; f.atkCd = 3f; f.play("c:idle_00", true, 0.2f) }
+                if (f.stT >= 1.3f) { f.state = 0; f.atkCd = 2.2f; f.play("c:idle_00", true, 0.2f) }
             }
             1, 2, 4 -> {
                 f.stT += dt
                 if (f.stT >= f.hold) {
                     if (f.state == 4 && f.stage == 0) { f.stage = 1; f.stT = 0f; f.hold = 1.5f; f.play("c:down_knockdown_up01", false, 0.1f) }
-                    else { f.state = 0; f.stage = 0; f.atkCd = 1.2f; f.play("c:idle_00", true, 0.2f) }
+                    else { f.state = 0; f.stage = 0; f.atkCd = 1.0f; f.play("c:idle_00", true, 0.2f) }
                 }
             }
             5 -> {

@@ -1,3 +1,24 @@
+#id 2026-11-25-i
+#titulo Base para novos personagens
+- Ritmo, recargas, esquiva e cancelamentos do guerreiro agora ficam numa ficha própria (Champion.kt), pronta para receber outros personagens
+
+#id 2026-11-25-h
+#titulo Fluidez estilo LoL: movimento e esquiva
+- Movimento instantâneo: o guerreiro acelera, para e vira na hora, sem inércia nem largada, e a velocidade segue o quanto você empurra o analógico
+- Novo botão ESQ (esquiva/dash): avança rápido na direção do analógico, cancela qualquer ataque ou skill (menos a ultimate) e dá invulnerabilidade curta
+- Esquivar bem de um golpe do inimigo zera a recarga da esquiva e devolve mana
+- O jogo agora é só de luta: botões e modo de parkour removidos da tela
+
+#id 2026-11-25-g
+#titulo Combate rápido e frenético
+- Combo de 4 golpes bem mais rápido: o primeiro golpe sai em menos de meio segundo e os seguintes em cerca de 0,3 s
+- Buffer de comandos: aperte o próximo ataque ou skill antes da hora e ele sai assim que possível
+- Cancelamento: depois de acertar, você pode emendar qualquer skill ou ataque, ou cancelar a recuperação mexendo o analógico
+- Avanço automático até o inimigo nos golpes, então o combo conecta sem precisar de precisão
+- Contador de combo: cada acerto em sequência dá mais dano (até +36%) e devolve mana, e aparece COMBO xN
+- Skills mais rápidas, recarga menor, custo de mana menor e mais regeneração; pausa de impacto mais curta
+- Inimigo mais agressivo, para o combate não ficar parado
+
 #id 2026-11-25-f
 #titulo Sem parkour e andar mais fluido
 - Parkour desativado de vez: sem pulo, agachar, escalada, vault, pendurar, cano, corrida na parede, equilíbrio, natação e emotes
