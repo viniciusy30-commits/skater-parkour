@@ -1,3 +1,20 @@
+#id 2026-11-25-k
+#titulo Esqueleto do Sentinel consertado
+- Cabeça agora é rígida e separada do pescoço: o queixo e o rosto não esticam mais para o lado
+- Pescoço e cabeça seguem o peito com movimento suave, sem ficar caídos para a frente
+- Cintura sem afinar: a torção e a flexão do tronco foram distribuídas por todos os ossos da coluna
+- Ossos de torção do antebraço, braço, coxa e perna agora giram junto, sem o efeito de "pano torcido" no punho e no cotovelo
+- Mãos com punho relaxado em vez de palma aberta e achatada
+- Ombros no lugar certo, sem a pose corcunda
+- Cintura mais larga e sem esticar: as coxas não puxam mais a barriga quando ele agacha
+- Cabeça olha para frente: o pescoço compensa a inclinação do tronco, sem ficar olhando para o chão
+- Corrida e caminhada sem rebolado: o giro e a inclinação lateral do quadril foram amortecidos
+
+#id 2026-11-25-j
+#titulo Novo personagem: Ironbound Sentinel
+- O guerreiro foi trocado pelo Ironbound Sentinel (novo modelo 3D com textura), usando as mesmas animações de movimento, combate e skills
+- Vale também para o inimigo, que usa o mesmo modelo
+
 #id 2026-11-25-i
 #titulo Base para novos personagens
 - Ritmo, recargas, esquiva e cancelamentos do guerreiro agora ficam numa ficha própria (Champion.kt), pronta para receber outros personagens

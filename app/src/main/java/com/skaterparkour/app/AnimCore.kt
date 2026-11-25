@@ -4,8 +4,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.*
 
-/** Quantidade de ossos animados (pelve, coluna, cabeça, braços e pernas). */
-const val NBONE = 22
+/** Quantidade de ossos animados (pelve, coluna, pescoço, cabeça, braços, pernas e ossos de torção). Os 22 primeiros seguem a ordem original. */
+const val NBONE = 41
 
 /** Esqueleto do personagem Meshy (grafo de nós do glTF, 95 juntas de skin). */
 class RigData(bytes: ByteArray) {
