@@ -10,6 +10,8 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
     val foeSkel = Skeleton(rig)
     val foeM = FloatArray(16)
     private val foeAnim = Animator(cs)
+    private val csr = cs
+    private var lastPc = ""
     private val cbEv = ArrayList<String>()
     private var cbPrev = false
     private val anim = Animator(cs)
@@ -27,6 +29,32 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
     private var emoteI = 0
 
     init { M4.id(charM); M4.id(foeM); combat.onRevive = { goStation(station) }; tgt[0] = player.x; tgt[1] = player.y + 1.2f; tgt[2] = player.z; goStation(0) }
+
+    /** Movimentação (parado, andar, correr, strafe, giro, morte) usa os clipes do guerreiro antigo; parkour continua com os do Mobility Pro. */
+    private fun warriorClip(n: String): String {
+        if (!n.startsWith("m:")) return n
+        val b = n.substring(2)
+        val r: String = when {
+            b == "Stand_Relaxed_Idle" -> "c:idle_00"
+            b == "Stand_Relaxed_Idle_v2" -> "c:idle_01"
+            b.startsWith("Walk_") && !b.contains("Jump") -> when (b.removePrefix("Walk_")) {
+                "FL_Loop" -> "c:walk_FrontL"; "FR_Loop" -> "c:walk_FrontR"; "L" -> "c:walk_left"; "R" -> "c:walk_right"
+                "B" -> "c:walk_back"; "BL_BkPd_Loop" -> "c:walk_backL"; "BR_BkPd_Loop" -> "c:walk_backR"; else -> "c:walk_front"
+            }
+            (b.startsWith("Jog_") || b.startsWith("Run_")) && !b.contains("Jump") -> when (b.substring(4)) {
+                "FL_Loop" -> "c:move_run_strafe_frontL45"; "FR_Loop" -> "c:move_run_strafe_frontR45"
+                "L" -> "c:move_run_strafe_left"; "R" -> "c:move_run_strafe_right"; "B" -> "c:move_run_strafe_back"
+                "BL_BkPd_Loop" -> "c:move_run_strafe_backL45"; "BR_BkPd_Loop" -> "c:move_run_strafe_backR45"; else -> "c:move_run_front"
+            }
+            Regex("Stand_Relaxed_L\\d+").matches(b) -> if (b.removePrefix("Stand_Relaxed_L").toInt() >= 90) "c:turn_90L" else "c:idle_00"
+            Regex("Stand_Relaxed_R_\\d+").matches(b) -> if (b.removePrefix("Stand_Relaxed_R_").toInt() >= 90) "c:turn_90R" else "c:idle_00"
+            b.startsWith("Stand_Relaxed_Death_") -> when (b.last()) { 'F' -> "c:dead01"; 'B' -> "c:dead02"; 'L' -> "c:dead03"; else -> "c:dead04" }
+            (b.startsWith("Stand_Relaxed_To_") || b.startsWith("Stand_Relaxed_to_")) && !b.contains("Crouch") ->
+                if (b.contains("Run") || b.contains("Jog")) "c:move_run_front" else "c:walk_front"
+            else -> n
+        }
+        return if (csr.has(r)) r else n
+    }
 
     fun stationName() = stations[station].name
 
@@ -89,9 +117,11 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
             if (combat.changed) { anim.changed(combat.fade); combat.changed = false }
             anim.update(combat.clip, combat.t, combat.loop, dt)
         } else {
+            val pc = warriorClip(player.clip)
             if (cbPrev) { anim.changed(0.2f); player.clipChanged = false }
-            else if (player.clipChanged) { anim.changed(player.xfade); player.clipChanged = false }
-            anim.update(player.clip, player.t, player.loop, dt)
+            else if (player.clipChanged) { if (pc != lastPc) anim.changed(player.xfade); player.clipChanged = false }
+            lastPc = pc
+            anim.update(pc, player.t, player.loop, dt)
         }
         cbPrev = combat.busy
         val fo = combat.foe
