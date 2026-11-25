@@ -1,3 +1,11 @@
+#id 2026-11-25-b
+#titulo Novo guerreiro: Crimson Warlord com dois machados
+- O personagem agora é o Crimson Warlord (armadura, capa rasgada e dois machados de leão), no lugar do guerreiro antigo
+- Mantém todo o kit de animações de antes (mobilidade, parkour e natação): as 492 animações foram adaptadas ao esqueleto novo, com os pés no chão
+- Os machados ficam nas duas mãos, com os dedos fechados em volta do cabo
+- Visual com cor assada por vértice e brilho de metal nas armas e na armadura (sem textura, para rodar leve no celular)
+- Os 110 movimentos de combate do arquivo do guerreiro (ataques, combos, defesa, dano, morte) ainda não estão ligados ao jogo
+
 #id 2026-11-25-a
 #titulo Nova arena: o coliseu grego é o mapa principal
 - Mapa principal agora é a arena grega de mármore e ouro (colunas, arquibancadas, arcos), com céu e iluminação própria
