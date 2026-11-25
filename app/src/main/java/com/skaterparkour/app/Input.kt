@@ -15,6 +15,7 @@ object Input {
     @Volatile var aimY = 0f
     @Volatile var aimActive = false
 
+    @Volatile var combatMode = false
     @Volatile var sens = 1f
     @Volatile var aimMode = false
     @Volatile var jumpHeld = false

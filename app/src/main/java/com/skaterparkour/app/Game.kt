@@ -3,9 +3,15 @@ package com.skaterparkour.app
 import kotlin.math.*
 
 /** Mapa de testes + jogador + câmera. Roda na thread do GL. */
-class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Station>) {
+class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Station>, audio: Audio? = null) {
     val player = Player(world, cs)
+    val combat = Combat(cs, player, audio)
     val skel = Skeleton(rig)
+    val foeSkel = Skeleton(rig)
+    val foeM = FloatArray(16)
+    private val foeAnim = Animator(cs)
+    private val cbEv = ArrayList<String>()
+    private var cbPrev = false
     private val anim = Animator(cs)
     private val ctl = Ctl()
     private val cam = FloatArray(3)
@@ -20,7 +26,7 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
     var underwater = false
     private var emoteI = 0
 
-    init { M4.id(charM); tgt[0] = player.x; tgt[1] = player.y + 1.2f; tgt[2] = player.z; goStation(0) }
+    init { M4.id(charM); M4.id(foeM); combat.onRevive = { goStation(station) }; tgt[0] = player.x; tgt[1] = player.y + 1.2f; tgt[2] = player.z; goStation(0) }
 
     fun stationName() = stations[station].name
 
@@ -32,12 +38,13 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         camYaw = s.yaw
         tgt[0] = s.x; tgt[1] = s.y + 1.2f; tgt[2] = s.z
         anim.changed(0.01f)
+        combat.respawnFoe()
     }
 
     fun update(dtIn: Float) {
         val dt = dtIn.coerceIn(0f, 0.1f)
         time += dt
-        ev.clear(); Input.take(cam, ev)
+        ev.clear(); cbEv.clear(); Input.take(cam, ev)
         camYaw -= cam[0]
         camPitch = clampf(camPitch + cam[1], -.15f, 1.35f)
         camDist = clampf(camDist / cam[2], 2.2f, 14f)
@@ -46,6 +53,7 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
             "jump" -> jump = true; "crouch" -> crouch = true; "drop" -> drop = true
             "emote" -> emote = true; "die" -> die = true; "act" -> act = true
             "next" -> goStation(station + 1); "prev" -> goStation(station - 1)
+            "atk", "s1", "s2", "s3", "s4", "ult" -> cbEv.add(e)
         }
         // joystick -> direção no mundo (relativa à câmera)
         val jx = Input.jx; val jy = Input.jy
@@ -61,13 +69,15 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         ctl.jumpHeld = Input.jumpHeld; ctl.crouchHeld = Input.crouchHeld
         ctl.aim = Input.aimMode; ctl.aimYaw = camYaw
         if (emote) emoteI = emoteI % 8 + 1
+        combat.update(dt, cbEv, player.st == Player.St.LOCO)
+        if (combat.busy) { ctl.mx = 0f; ctl.mz = 0f; jump = false; crouch = false; drop = false; emote = false; die = false; act = false }
         // passos fixos de no máximo 1/60 s
         val steps = max(1, ceil(dt / (1f / 60f)).toInt())
         val h = dt / steps
         for (i in 0 until steps) {
             ctl.jump = jump && i == 0; ctl.crouch = crouch && i == 0; ctl.drop = drop && i == 0
             ctl.emote = if (emote && i == 0) emoteI else 0; ctl.die = die && i == 0; ctl.act = act && i == 0
-            player.update(h, ctl)
+            if (!combat.busy) player.update(h, ctl)
         }
         ctl.clearEdges()
 
@@ -75,8 +85,20 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         if (player.y < -25f) goStation(station)
 
         // animação
-        if (player.clipChanged) { anim.changed(player.xfade); player.clipChanged = false }
-        anim.update(player.clip, player.t, player.loop, dt)
+        if (combat.busy) {
+            if (combat.changed) { anim.changed(combat.fade); combat.changed = false }
+            anim.update(combat.clip, combat.t, combat.loop, dt)
+        } else {
+            if (cbPrev) { anim.changed(0.2f); player.clipChanged = false }
+            else if (player.clipChanged) { anim.changed(player.xfade); player.clipChanged = false }
+            anim.update(player.clip, player.t, player.loop, dt)
+        }
+        cbPrev = combat.busy
+        val fo = combat.foe
+        if (fo.changed) { foeAnim.changed(fo.fade); fo.changed = false }
+        foeAnim.update(fo.clip, fo.t, fo.loop, dt)
+        foeSkel.solve(foeAnim.out)
+        M4.trs(foeM, fo.x, fo.y, fo.z, fo.yaw, 1f)
         skel.solve(anim.out)
         M4.trs(charM, player.x, player.y, player.z, player.yaw, 1f)
 
@@ -91,10 +113,15 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         eye[1] = max(.25f, tgt[1] + sp * camDistSm)
         eye[2] = tgt[2] - cos(camYaw) * cp * camDistSm
         look[0] = tgt[0]; look[1] = tgt[1]; look[2] = tgt[2]
+        val shk = combat.shake
+        if (shk > 0f) {
+            eye[0] += (kotlin.random.Random.nextFloat() - .5f) * shk * .14f; eye[1] += (kotlin.random.Random.nextFloat() - .5f) * shk * .14f
+            look[0] += (kotlin.random.Random.nextFloat() - .5f) * shk * .08f; look[1] += (kotlin.random.Random.nextFloat() - .5f) * shk * .08f
+        }
         val wa = world.waterAt(eye[0], eye[2])
         underwater = wa != null && eye[1] < wa.surface
     }
 
-    fun status(): String = "${player.st} · ${player.clip.substring(2)}"
+    fun status(): String = if (combat.busy) "COMBATE · ${combat.clip.substring(2)}" else "${player.st} · ${player.clip.substring(2)}"
     fun info(): String = player.info
 }

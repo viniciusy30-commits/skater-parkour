@@ -1,3 +1,13 @@
+#id 2026-11-25-c
+#titulo Combate: kit completo do guerreiro de volta, com os dois machados
+- Botão LUTA/PARK (topo) alterna entre os controles de parkour e os de combate
+- Corte Dual (ATQ): Combo 04 em 4 toques, o toque seguinte encadeia o golpe
+- Skill 1 Cruz Ceifadora (corte em X), Skill 2 Contra-Ataque (guarda, defende e solta onda dourada), Skill 3 Rompe-Terra (marca o chão e esmaga), Skill 4 Corrente (arremessa, puxa e golpeia) e Ultimate Ragnarok (rugido e Combo 03 em fúria)
+- Recarga, custo de mana e sons iguais aos do visualizador v99; barras de vida e de mana no canto
+- Guerreiro Sombra: inimigo de treino que anda até você, ataca, reage aos golpes, cai e renasce
+- 110 animações de combate (ataques, combos, defesa, dano, queda, morte) adaptadas ao esqueleto novo, com os pés no chão
+- Efeitos simples na tela (anéis, X de corte, números de dano, tremor de câmera); os efeitos completos do visualizador ainda não foram portados
+
 #id 2026-11-25-b
 #titulo Novo guerreiro: Crimson Warlord com dois machados
 - O personagem agora é o Crimson Warlord (armadura, capa rasgada e dois machados de leão), no lugar do guerreiro antigo

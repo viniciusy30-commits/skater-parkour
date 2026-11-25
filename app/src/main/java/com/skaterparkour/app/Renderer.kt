@@ -9,7 +9,7 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.max
 
-class Renderer(private val ctx: Context, @Suppress("unused") private val audio: Audio) : GLSurfaceView.Renderer {
+class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceView.Renderer {
     @Volatile var game: Game? = null
     @Volatile var loadMsg = "Carregando…"
     @Volatile var error: String? = null
@@ -24,6 +24,7 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
     private var nJ = 80
     private lateinit var boneBuf: java.nio.FloatBuffer
     private val u = HashMap<String, Int>()
+    val vpOut = FloatArray(16)
     private val proj = FloatArray(16); private val view = FloatArray(16); private val vp = FloatArray(16)
     private var last = 0L
 
@@ -35,7 +36,7 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
             val cs = ClipSet(Gl.readAsset(ctx, "w/anim.bin"))
             body = WMesh(ctx, "w/char.msh", true, colored = true)
             loadMsg = "Montando a arena…"
-            val g = Game(cs, rig, Arena.build(ctx), Arena.stations)
+            val g = Game(cs, rig, Arena.build(ctx), Arena.stations, audio)
             arena = ArenaMesh(ctx)
             progSky = Gl.program(Shaders.SKY_VS, Shaders.SKY_FS)
             skyVao = Gl.gen(::glGenVertexArrays); glBindVertexArray(skyVao)
@@ -74,6 +75,7 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
 
         Matrix.setLookAtM(view, 0, g.eye[0], g.eye[1], g.eye[2], g.look[0], g.look[1], g.look[2], 0f, 1f, 0f)
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
+        System.arraycopy(vp, 0, vpOut, 0, 16)
         glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); glDisable(GL_CULL_FACE)
 
         // céu
@@ -94,6 +96,11 @@ class Renderer(private val ctx: Context, @Suppress("unused") private val audio: 
         glUniform1i(u["uBones"]!!, 1)
         glUniformMatrix4fv(u["uVP"]!!, 1, false, vp, 0); glUniformMatrix4fv(u["uM"]!!, 1, false, g.charM, 0)
         glUniform3fv(u["uCtr"]!!, 1, body.ctr, 0); glUniform3fv(u["uExt"]!!, 1, body.ext, 0); glUniform3fv(u["uCam"]!!, 1, g.eye, 0)
+        body.draw()
+        // inimigo (Guerreiro Sombra): mesma malha, outro esqueleto
+        boneBuf.clear(); boneBuf.put(g.foeSkel.skin, 0, nJ * 16); boneBuf.flip()
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4, nJ, GL_RGBA, GL_FLOAT, boneBuf)
+        glUniformMatrix4fv(u["uM"]!!, 1, false, g.foeM, 0)
         body.draw()
         glBindVertexArray(0)
 

@@ -17,8 +17,14 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
     private val btns = listOf(
         Btn("jump", "PULAR"), Btn("crouch", "AGACHAR"), Btn("drop", "SOLTAR"),
         Btn("aim", "MIRAR"), Btn("emote", "EMOTE"), Btn("act", "AÇÃO"), Btn("die", "MORRER"),
-        Btn("prev", "◀"), Btn("next", "▶"), Btn("gear", "⚙")
+        Btn("prev", "◀"), Btn("next", "▶"), Btn("gear", "⚙"),
+        Btn("atk", "ATQ"), Btn("s1", "1"), Btn("s2", "2"), Btn("s3", "3"), Btn("s4", "4"), Btn("ult", "ULT"), Btn("mode", "MODO")
     )
+    private val cbIds = setOf("atk", "s1", "s2", "s3", "s4", "ult")
+    private val pkIds = setOf("jump", "crouch", "drop", "aim", "emote", "act", "die")
+    private fun vis(b: Btn): Boolean = if (b.id in cbIds) Input.combatMode else if (b.id in pkIds) !Input.combatMode else true
+    private val rf = RectF()
+    private val tp = FloatArray(2)
     private val gold = 0xFFE9C47E.toInt()
     private val pFill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -44,9 +50,16 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         set("prev", w / 2 - d(120f), d(30f), d(20f))
         set("next", w / 2 + d(120f), d(30f), d(20f))
         set("gear", w - d(34f), d(32f), d(18f))
+        set("mode", w - d(84f), d(32f), d(24f))
+        set("atk", w - d(96f), h - d(92f), d(52f))
+        set("s1", w - d(214f), h - d(62f), d(33f))
+        set("s2", w - d(196f), h - d(142f), d(33f))
+        set("s3", w - d(148f), h - d(206f), d(33f))
+        set("s4", w - d(80f), h - d(232f), d(33f))
+        set("ult", w - d(290f), h - d(110f), d(36f))
     }
 
-    private fun hit(x: Float, y: Float) = btns.firstOrNull { hypot(x - it.x, y - it.y) < it.rad * 1.2f }
+    private fun hit(x: Float, y: Float) = btns.firstOrNull { vis(it) && hypot(x - it.x, y - it.y) < it.rad * 1.2f }
 
     private fun press(b: Btn) {
         b.held = true
@@ -61,6 +74,8 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
             "prev" -> Input.press("prev")
             "next" -> Input.press("next")
             "gear" -> onSettings()
+            "atk", "s1", "s2", "s3", "s4", "ult" -> Input.press(b.id)
+            "mode" -> { Input.combatMode = !Input.combatMode; Input.jumpHeld = false; Input.crouchHeld = false; Input.aimMode = false }
         }
     }
 
@@ -154,9 +169,11 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         c.drawText(g.status(), d(12f), d(18f), pText)
         if (g.info().isNotEmpty()) c.drawText(g.info(), d(12f), d(32f), pText)
         pText.textAlign = Paint.Align.CENTER
+        drawBars(c, g)
+        drawWorld(c, g)
         r.lastErr?.let { pText.textSize = d(9f); pText.color = 0xFFFF8080.toInt(); c.drawText(it.take(120), width / 2f, height - d(8f), pText) }
         drawJoy(c)
-        for (b in btns) drawBtn(c, b, g)
+        for (b in btns) if (vis(b)) drawBtn(c, b, g)
         postInvalidateOnAnimation()
     }
 
@@ -182,6 +199,102 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         pText.color = if (dim) 0x88E9C47E.toInt() else gold
         pText.textSize = if (big) rad * .34f else rad * .55f
         if (b.label.length <= 2) pText.textSize = rad * 1.0f
-        c.drawText(b.label, b.x, b.y + pText.textSize * .34f, pText)
+        val lab = if (b.id == "mode") (if (Input.combatMode) "PARK" else "LUTA") else b.label
+        c.drawText(lab, b.x, b.y + pText.textSize * .34f, pText)
+        val ci = when (b.id) { "s1" -> 0; "s2" -> 1; "s3" -> 2; "s4" -> 3; "ult" -> 4; else -> -1 }
+        if (ci >= 0) {
+            val fr = g.combat.cdFrac(ci)
+            rf.set(b.x - rad, b.y - rad, b.x + rad, b.y + rad)
+            if (fr > 0f) { pFill.color = 0xB0000000.toInt(); c.drawArc(rf, -90f, 360f * fr, true, pFill) }
+            else if (!g.combat.canCast(ci)) { pFill.color = 0x70000000; c.drawCircle(b.x, b.y, rad, pFill) }
+        }
+    }
+
+    private fun withA(col: Int, a: Float): Int = ((clampf(a, 0f, 1f) * 255f).toInt() shl 24) or (col and 0x00FFFFFF)
+
+    private fun bar(c: Canvas, x: Float, y: Float, w: Float, h: Float, frac: Float, col: Int) {
+        pFill.color = 0x90000000.toInt(); c.drawRect(x, y, x + w, y + h, pFill)
+        pFill.color = col; c.drawRect(x, y, x + w * clampf(frac, 0f, 1f), y + h, pFill)
+        pStroke.color = 0x88E9C47E.toInt(); pStroke.strokeWidth = d(1f); c.drawRect(x, y, x + w, y + h, pStroke)
+    }
+
+    private fun drawBars(c: Canvas, g: Game) {
+        val cb = g.combat
+        bar(c, d(12f), d(42f), d(150f), d(9f), cb.hp / cb.maxHp, 0xFFC8362A.toInt())
+        bar(c, d(12f), d(55f), d(150f), d(9f), cb.mana / cb.maxMana, 0xFF3B7BE0.toInt())
+    }
+
+    private fun proj(m: FloatArray, x: Float, y: Float, z: Float): Boolean {
+        val cw = m[3] * x + m[7] * y + m[11] * z + m[15]
+        if (cw < 0.2f) return false
+        val cx = m[0] * x + m[4] * y + m[8] * z + m[12]
+        val cy = m[1] * x + m[5] * y + m[9] * z + m[13]
+        tp[0] = (cx / cw * 0.5f + 0.5f) * width; tp[1] = (0.5f - cy / cw * 0.5f) * height
+        return true
+    }
+
+    /** Anel no chão (elipse em perspectiva) com raio [rad] metros. */
+    private fun groundRing(c: Canvas, m: FloatArray, x: Float, y: Float, z: Float, rad: Float, col: Int, wd: Float) {
+        if (!proj(m, x, y, z)) return
+        val cx = tp[0]; val cy = tp[1]
+        if (!proj(m, x + rad, y, z)) return
+        val rx = abs(tp[0] - cx)
+        if (!proj(m, x, y, z + rad)) return
+        val ry = abs(tp[1] - cy)
+        rf.set(cx - rx, cy - ry, cx + rx, cy + ry)
+        pStroke.color = col; pStroke.strokeWidth = wd
+        c.drawOval(rf, pStroke)
+    }
+
+    private fun drawWorld(c: Canvas, g: Game) {
+        val m = r.vpOut; val cb = g.combat; val f = cb.foe; val pl = g.player
+        // inimigo: anel no chão, nome e barra de vida
+        if (f.state != 5) {
+            groundRing(c, m, f.x, f.y + 0.03f, f.z, 0.9f, 0xAAE0402A.toInt(), d(2.5f))
+            if (proj(m, f.x, f.y + 2.3f, f.z)) {
+                val bx = tp[0]; val by = tp[1]
+                pText.textSize = d(10f); pText.color = 0xFFFFD0C8.toInt()
+                c.drawText("GUERREIRO SOMBRA", bx, by - d(6f), pText)
+                bar(c, bx - d(40f), by - d(2f), d(80f), d(7f), f.hp / Foe.MAXHP, 0xFFD23B2E.toInt())
+            }
+        }
+        // aura da ultimate
+        if (cb.ultT > 0f) {
+            val pulse = 0.55f + 0.35f * sin(g.time * 9f)
+            groundRing(c, m, pl.x, pl.y + 0.03f, pl.z, 1.1f + 0.15f * sin(g.time * 7f), withA(0xFFFF2A1A.toInt(), pulse), d(4f))
+            groundRing(c, m, pl.x, pl.y + 0.03f, pl.z, 1.7f, withA(0xFFFF7A2A.toInt(), pulse * 0.6f), d(2f))
+        }
+        // efeitos
+        for (e in cb.fx) {
+            val p = clampf(e.age / e.life, 0f, 1f)
+            when (e.kind) {
+                0 -> groundRing(c, m, e.x, e.y + 0.05f, e.z, e.r * smooth(p) + 0.1f, withA(e.color, 1f - p), d(5f) * (1f - p) + d(1f))
+                2 -> {
+                    groundRing(c, m, e.x, e.y + 0.05f, e.z, e.r, withA(e.color, 0.9f - 0.4f * p), d(3f))
+                    groundRing(c, m, e.x, e.y + 0.05f, e.z, e.r * (0.4f + 0.3f * sin(p * 20f)), withA(e.color, 0.7f), d(2f))
+                }
+                else -> if (proj(m, e.x, e.y, e.z)) {
+                    val s = d(46f) * (0.7f + 0.5f * smooth(p * 2f))
+                    pStroke.color = withA(e.color, 1f - p * p); pStroke.strokeWidth = d(5f) * (1f - 0.5f * p)
+                    pStroke.strokeCap = Paint.Cap.ROUND
+                    c.drawLine(tp[0] - s, tp[1] - s, tp[0] + s, tp[1] + s, pStroke)
+                    c.drawLine(tp[0] + s, tp[1] - s, tp[0] - s, tp[1] + s, pStroke)
+                    pStroke.strokeCap = Paint.Cap.BUTT
+                }
+            }
+        }
+        // números de dano
+        for (p in cb.pops) {
+            if (proj(m, p.x, p.y + p.age * 0.9f, p.z)) {
+                pText.textSize = d(19f); pText.color = withA(p.color, 1f - clampf((p.age - 0.6f) / 0.5f, 0f, 1f))
+                c.drawText(p.text, tp[0], tp[1], pText)
+            }
+        }
+        // clarão de tela
+        if (cb.flash > 0f) { pFill.color = withA(cb.flashColor, cb.flash * 0.7f); c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), pFill) }
+        if (cb.hp <= 0f) {
+            pText.textSize = d(30f); pText.color = 0xFFE0402A.toInt()
+            c.drawText("DERROTADO", width / 2f, height / 2f, pText)
+        }
     }
 }
