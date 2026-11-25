@@ -30,18 +30,19 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
 
     init { M4.id(charM); M4.id(foeM); combat.onRevive = { goStation(station) }; tgt[0] = player.x; tgt[1] = player.y + 1.2f; tgt[2] = player.z; goStation(0) }
 
-    /** Movimentação (parado, andar, correr, strafe, giro, morte) usa os clipes do guerreiro antigo; parkour continua com os do Mobility Pro. */
+    /** O guerreiro usa SÓ animações dele (luta + locomoção). Nenhum clipe de parkour (m:/p:/s:) chega à tela. */
     private fun warriorClip(n: String): String {
-        if (!n.startsWith("m:")) return n
+        if (n.startsWith("c:")) return n
         val b = n.substring(2)
         val r: String = when {
+            // ---- locomoção ----
             b == "Stand_Relaxed_Idle" -> "c:idle_00"
             b == "Stand_Relaxed_Idle_v2" -> "c:idle_01"
-            b.startsWith("Walk_") && !b.contains("Jump") -> when (b.removePrefix("Walk_")) {
+            n.startsWith("m:") && b.startsWith("Walk_") && !b.contains("Jump") -> when (b.removePrefix("Walk_")) {
                 "FL_Loop" -> "c:walk_FrontL"; "FR_Loop" -> "c:walk_FrontR"; "L" -> "c:walk_left"; "R" -> "c:walk_right"
                 "B" -> "c:walk_back"; "BL_BkPd_Loop" -> "c:walk_backL"; "BR_BkPd_Loop" -> "c:walk_backR"; else -> "c:walk_front"
             }
-            (b.startsWith("Jog_") || b.startsWith("Run_")) && !b.contains("Jump") -> when (b.substring(4)) {
+            n.startsWith("m:") && (b.startsWith("Jog_") || b.startsWith("Run_")) && !b.contains("Jump") -> when (b.substring(4)) {
                 "FL_Loop" -> "c:move_run_strafe_frontL45"; "FR_Loop" -> "c:move_run_strafe_frontR45"
                 "L" -> "c:move_run_strafe_left"; "R" -> "c:move_run_strafe_right"; "B" -> "c:move_run_strafe_back"
                 "BL_BkPd_Loop" -> "c:move_run_strafe_backL45"; "BR_BkPd_Loop" -> "c:move_run_strafe_backR45"; else -> "c:move_run_front"
@@ -49,11 +50,24 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
             Regex("Stand_Relaxed_L\\d+").matches(b) -> if (b.removePrefix("Stand_Relaxed_L").toInt() >= 90) "c:turn_90L" else "c:idle_00"
             Regex("Stand_Relaxed_R_\\d+").matches(b) -> if (b.removePrefix("Stand_Relaxed_R_").toInt() >= 90) "c:turn_90R" else "c:idle_00"
             b.startsWith("Stand_Relaxed_Death_") -> when (b.last()) { 'F' -> "c:dead01"; 'B' -> "c:dead02"; 'L' -> "c:dead03"; else -> "c:dead04" }
-            (b.startsWith("Stand_Relaxed_To_") || b.startsWith("Stand_Relaxed_to_")) && !b.contains("Crouch") ->
-                if (b.contains("Run") || b.contains("Jog")) "c:move_run_front" else "c:walk_front"
-            else -> n
+            // ---- pulo / queda / pouso ----
+            b.contains("Landing_Roll") -> if (b.endsWith("_R")) "c:roll_right" else "c:roll_front"
+            b.startsWith("Landing") || b.startsWith("LandingGround") -> "c:move_step_front"
+            b.contains("Jump") || b.contains("Hop") || b.startsWith("Fly") || b.startsWith("Fall") -> "c:jump"
+            // ---- agachar -> postura de defesa / idle ----
+            b.startsWith("Crouch") || b.contains("Crouch") ->
+                if (b.contains("Walk")) "c:walk_front" else if (b == "Crouch_Idle" || b == "Crouch_Idle_V2" || b.startsWith("Crouch_to_Stand")) "c:defence" else "c:defence"
+            // ---- emotes (luta/pose) ----
+            b.contains("Fgt") -> when (((b.lastOrNull() ?: '1') - '0') and 3) { 0 -> "c:buff_01"; 1 -> "c:equip"; 2 -> "c:unequip"; else -> "c:throw" }
+            b.contains("Conv") -> if ((b.hashCode() and 1) == 0) "c:idle_01" else "c:buff_01"
+            // ---- sobe/pula obstáculo, pendurar, cano, equilíbrio, vault: o guerreiro só pula ----
+            b.contains("Ledge") || b.contains("Wall") || b.contains("Pipe") || b.contains("Climb") || b.contains("Vault") ||
+                b.contains("Hang") || b.contains("Mantle") || b.contains("Balance") || b.contains("Slide") -> "c:jump"
+            // ---- natação / água ----
+            b.contains("Run") || b.contains("Topedo") || b.contains("forward") || b.contains("walk") -> "c:move_run_front"
+            else -> "c:idle_00"
         }
-        return if (csr.has(r)) r else n
+        return if (csr.has(r)) r else "c:idle_00"
     }
 
     fun stationName() = stations[station].name

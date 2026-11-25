@@ -20,7 +20,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
     private lateinit var arena: ArenaMesh
     private var progSky = 0; private var skyVao = 0
     private val ivp = FloatArray(16)
-    private var boneTex = 0; private var progSkin = 0
+    private var boneTex = 0; private var charTex = 0; private var progSkin = 0
     private var nJ = 80
     private lateinit var boneBuf: java.nio.FloatBuffer
     private val u = HashMap<String, Int>()
@@ -34,7 +34,9 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
             loadMsg = "Carregando o personagem…"
             rig = RigData(Gl.readAsset(ctx, "w/rig.bin")); nJ = rig.nJoints
             val cs = ClipSet(Gl.readAsset(ctx, "w/anim.bin"))
-            body = WMesh(ctx, "w/char.msh", true, colored = true)
+            body = WMesh(ctx, "w/char.msh", true, colored = false)
+            charTex = Gl.texture(ctx, "w/char_atlas.jpg", true, false)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 2)
             loadMsg = "Montando a arena…"
             val g = Game(cs, rig, Arena.build(ctx), Arena.stations, audio)
             arena = ArenaMesh(ctx)
@@ -43,8 +45,8 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
             val sq = Gl.floats(8); sq.put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)); sq.flip()
             val sqb = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, sqb); glBufferData(GL_ARRAY_BUFFER, 32, sq, GL_STATIC_DRAW)
             glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, false, 8, 0); glBindVertexArray(0)
-            progSkin = Gl.program(Shaders.SKINC_VS, Shaders.CHAR_FS)
-            for (n in listOf("uBones", "uVP", "uM", "uCtr", "uExt", "uCam")) u[n] = glGetUniformLocation(progSkin, n)
+            progSkin = Gl.program(Shaders.SKINT_VS, Shaders.CHAR_TFS)
+            for (n in listOf("uBones", "uTex", "uVP", "uM", "uCtr", "uExt", "uCam")) u[n] = glGetUniformLocation(progSkin, n)
             boneBuf = Gl.floats(nJ * 16)
             boneTex = Gl.gen(::glGenTextures)
             glBindTexture(GL_TEXTURE_2D, boneTex)
@@ -93,7 +95,8 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
         glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, boneTex)
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4, nJ, GL_RGBA, GL_FLOAT, boneBuf)
         glUseProgram(progSkin)
-        glUniform1i(u["uBones"]!!, 1)
+        glUniform1i(u["uBones"]!!, 1); glUniform1i(u["uTex"]!!, 0)
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, charTex); glActiveTexture(GL_TEXTURE1)
         glUniformMatrix4fv(u["uVP"]!!, 1, false, vp, 0); glUniformMatrix4fv(u["uM"]!!, 1, false, g.charM, 0)
         glUniform3fv(u["uCtr"]!!, 1, body.ctr, 0); glUniform3fv(u["uExt"]!!, 1, body.ext, 0); glUniform3fv(u["uCam"]!!, 1, g.eye, 0)
         body.draw()

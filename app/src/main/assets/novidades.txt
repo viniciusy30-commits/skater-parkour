@@ -1,3 +1,14 @@
+#id 2026-11-25-e
+#titulo Guerreiro com textura de verdade (muito mais nítido)
+- A armadura, a capa e os machados agora usam uma textura de 2048x2048 assada do modelo original, em vez de cor por vértice
+- Cada texel cobre cerca de 0,36 cm do personagem, então os desenhos e detalhes deixam de ficar borrados
+- Modelo com 88 mil triângulos (antes 66 mil vértices sem textura); o brilho metálico continua por vértice
+
+#id 2026-11-25-d
+#titulo Guerreiro só com animações de luta
+- Removidas do guerreiro todas as animações de parkour (pulo, queda, pouso, agachar, escalada, vault, cano, natação e emotes)
+- Agora ele usa só as animações de luta e de movimentação do próprio guerreiro: parado, andar, correr, strafe, giros, rolamento, pulo, defesa e mortes
+
 #id 2026-11-25-c
 #titulo Combate: kit completo do guerreiro de volta, com os dois machados
 - Botão LUTA/PARK (topo) alterna entre os controles de parkour e os de combate

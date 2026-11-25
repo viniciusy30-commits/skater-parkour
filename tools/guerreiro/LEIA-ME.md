@@ -8,3 +8,10 @@ Rodar na pasta de trabalho, com `meta.json`, `blob.bin` e `hero/` (criados por e
 4. `python3 hero_mesh.py` (corpo + machado direito na mão 42 + machado esquerdo na mão 15) e `python3 export_msh.py` -> char.msh
 5. `python3 verify_bin.py` e `python3 fkcheck.py` conferem os arquivos e a altura dos pés; `pose_prev.py` + `rast` geram prévias.
 Formato do char.msh: cabeçalho 40 bytes (0, nv, nIdx, 28, ctr[3], ext[3]); vértice de 28 bytes = pos int16x4, normal int16x4, cor RGBA8 (RGB gama 2.0, A = metal), juntas u8x4, pesos u8x4; depois índices u32.
+
+## Versão com textura (atlas assado) — substitui os passos 4 do char.msh
+1. `python3 extract.py` e `python3 prep_tex.py` (gera *_uv.f32, *_tcol.raw, *_tmet.raw).
+2. `qemw 0 76000 ... body76.bin` (corpo) e `qemw 0 6000 ... axe6.bin` (machado), dentro de hero/.
+3. `g++ -O2 -std=c++17 -o bake bake.cpp` e `bake 2048 2 48 atlas 2 body_pos.f32 body_uv.f32 body_idx.u32 body_tcol.raw body_tmet.raw body76.bin axe_pos.f32 axe_uv.f32 axe_idx.u32 axe_tcol.raw axe_tmet.raw axe6.bin` (gera atlas_col.raw e atlas_partN.bin).
+4. `python3 hero_tex.py` -> char.msh com UV; salvar atlas_col.raw como JPEG q93 em w/char_atlas.jpg.
+Formato do vértice (28 bytes): pos int16x4, normal int16x4 (w = metal), UV u16x2, juntas u8x4, pesos u8x4.
