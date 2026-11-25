@@ -27,6 +27,25 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
     private val tgt = FloatArray(3)
     var underwater = false
     private var emoteI = 0
+    private var lt = 0f; private var lclip = "c:idle_00"; private var idleT = 0f
+
+    /** Clipe de locomoção do guerreiro a partir da velocidade e da direção reais (sem depender dos clipes do parkour). */
+    private fun locoWant(): String {
+        val sp = player.curSpeed
+        if (sp < 0.1f) return if (idleT > 8f && idleT < 14f) "c:idle_01" else "c:idle_00"
+        val rel = if (player.aiming) wrapA(player.moveDir - player.yaw) else 0f
+        val a = abs(rel); val l = rel > 0f
+        val sec = if (a < 0.4f) "F" else if (a < 1.2f) (if (l) "FL" else "FR") else if (a < 1.95f) (if (l) "L" else "R") else if (a < 2.75f) (if (l) "BL" else "BR") else "B"
+        return if (sp < 3.2f) when (sec) {
+            "F" -> "c:walk_front"; "FL" -> "c:walk_FrontL"; "FR" -> "c:walk_FrontR"; "L" -> "c:walk_left"
+            "R" -> "c:walk_right"; "BL" -> "c:walk_backL"; "BR" -> "c:walk_backR"; else -> "c:walk_back"
+        } else when (sec) {
+            "F" -> "c:move_run_front"; "FL" -> "c:move_run_strafe_frontL45"; "FR" -> "c:move_run_strafe_frontR45"; "L" -> "c:move_run_strafe_left"
+            "R" -> "c:move_run_strafe_right"; "BL" -> "c:move_run_strafe_backL45"; "BR" -> "c:move_run_strafe_backR45"; else -> "c:move_run_strafe_back"
+        }
+    }
+
+    private fun wrapA(a: Float): Float { var x = a; while (x > PI.toFloat()) x -= 2f * PI.toFloat(); while (x < -PI.toFloat()) x += 2f * PI.toFloat(); return x }
 
     init { M4.id(charM); M4.id(foeM); combat.onRevive = { goStation(station) }; tgt[0] = player.x; tgt[1] = player.y + 1.2f; tgt[2] = player.z; goStation(0) }
 
@@ -92,8 +111,8 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         camDist = clampf(camDist / cam[2], 2.2f, 14f)
         var jump = false; var crouch = false; var drop = false; var emote = false; var die = false; var act = false
         for (e in ev) when (e) {
-            "jump" -> jump = true; "crouch" -> crouch = true; "drop" -> drop = true
-            "emote" -> emote = true; "die" -> die = true; "act" -> act = true
+            "jump" -> jump = false; "crouch" -> crouch = false; "drop" -> drop = false
+            "emote" -> emote = false; "die" -> die = true; "act" -> act = false
             "next" -> goStation(station + 1); "prev" -> goStation(station - 1)
             "atk", "s1", "s2", "s3", "s4", "ult" -> cbEv.add(e)
         }
@@ -131,11 +150,28 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
             if (combat.changed) { anim.changed(combat.fade); combat.changed = false }
             anim.update(combat.clip, combat.t, combat.loop, dt)
         } else {
-            val pc = warriorClip(player.clip)
-            if (cbPrev) { anim.changed(0.2f); player.clipChanged = false }
-            else if (player.clipChanged) { if (pc != lastPc) anim.changed(player.xfade); player.clipChanged = false }
+            val loco = player.st == Player.St.LOCO && !player.clip.contains("Death")
+            val pc: String; val tt: Float; val lp: Boolean
+            if (loco) {
+                val sp = player.curSpeed
+                if (sp < 0.1f) { idleT += dt; if (idleT > 14f) idleT = 0f } else idleT = 0f
+                val want = locoWant()
+                if (want != lclip) {
+                    val od = if (csr.has(lclip)) csr[lclip].dur else 1f
+                    val moving = lclip.startsWith("c:walk") || lclip.startsWith("c:move_run")
+                    val nowMoving = want.startsWith("c:walk") || want.startsWith("c:move_run")
+                    lt = if (moving && nowMoving) (lt / od) % 1f * csr[want].dur else 0f
+                    lclip = want
+                }
+                val ref = if (lclip.startsWith("c:walk")) 1.6f else if (lclip.startsWith("c:move_run")) 4.4f else 0f
+                val rate = if (ref > 0f) (if (lclip.startsWith("c:walk")) (sp / ref).coerceIn(0.7f, 1.4f) else (sp / ref).coerceIn(0.8f, 1.25f)) else 1f
+                lt += dt * rate
+                pc = lclip; tt = lt; lp = true
+            } else { pc = warriorClip(player.clip); tt = player.t; lp = player.loop; lclip = ""; lt = 0f }
+            if (cbPrev) anim.changed(0.2f) else if (pc != lastPc) anim.changed(if (loco) 0.2f else player.xfade)
+            player.clipChanged = false
             lastPc = pc
-            anim.update(pc, player.t, player.loop, dt)
+            anim.update(pc, tt, lp, dt)
         }
         cbPrev = combat.busy
         val fo = combat.foe

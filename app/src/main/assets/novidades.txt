@@ -1,3 +1,9 @@
+#id 2026-11-25-f
+#titulo Sem parkour e andar mais fluido
+- Parkour desativado de vez: sem pulo, agachar, escalada, vault, pendurar, cano, corrida na parede, equilíbrio, natação e emotes
+- O guerreiro só usa as animações do machado duplo (luta, andar, correr, strafe, defesa e morte)
+- Andar e correr refeitos: a animação agora segue a velocidade e a direção reais, sem as largadas, paradas e giros do parkour que deixavam o movimento travado
+
 #id 2026-11-25-e
 #titulo Guerreiro com textura de verdade (muito mais nítido)
 - A armadura, a capa e os machados agora usam uma textura de 2048x2048 assada do modelo original, em vez de cor por vértice

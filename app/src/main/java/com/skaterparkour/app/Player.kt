@@ -53,6 +53,9 @@ class Player(val w: World, val cs: ClipSet) {
     var xfade = 0.2f; var clipChanged = true
     var st = St.LOCO
     var info = ""
+    val curSpeed: Float get() = speed
+    val moveDir: Float get() = mdir
+    val aiming: Boolean get() = aimOn
 
     // ---- internos
     private var vx = 0f; private var vz = 0f; private var vy = 0f
@@ -127,7 +130,7 @@ class Player(val w: World, val cs: ClipSet) {
             val fl = w.groundAt(x, z, 0.1f, ww.surface + 3f)
             val depth = ww.surface - fl
             wadeD = depth
-            if (y < ww.surface - 0.55f && depth > 1.15f) enterWater(ww)
+            if (false && y < ww.surface - 0.55f && depth > 1.15f) enterWater(ww)
         } else wadeD = 0f
         when (st) {
             St.LOCO -> loco(dt, c)
@@ -152,6 +155,7 @@ class Player(val w: World, val cs: ClipSet) {
         else if (a == 0) "m:Stand_Relaxed_to_${TN[tr]}_F" else "m:Stand_Relaxed_To_${TN[tr]}_${if (left) "L" else "R"}${a}_Fwd"
 
     private fun mvBegin(kind: Int, name: String, rate: Float, dYaw: Float, sp1: Float, rotFrac: Float, cut: Float): Boolean {
+        if (kind != 9) return false   // jogo de luta: sem largada, parada, giro, agachar ou emote
         if (!cs.has(name)) return false
         mv = kind; mvClip = name; mvT = 0f; mvRate = rate; mvDur = C(name).dur * cut / rate
         mvYaw0 = yaw; mvDYaw = dYaw; mvSp0 = speed; mvSp1 = sp1; mvRot = rotFrac
@@ -168,7 +172,7 @@ class Player(val w: World, val cs: ClipSet) {
         if (g < y - STEP - 0.01f) { mv = 0; startFall(); return false }
         y = if (g > y) min(g, y + 9f * dt) else if (g < y) max(g, y - 9f * dt) else y
         val bu = w.boxUnder(x, z, y)
-        if (bu != null && bu.kind == 2 && abs(y - bu.y1) < 0.1f) { mv = 0; st = St.BEAM; beamBox = bu; setClip("p:Balance_Idle", true, 0f, 0.25f); return false }
+        if (false && bu != null && bu.kind == 2 && abs(y - bu.y1) < 0.1f) { mv = 0; st = St.BEAM; beamBox = bu; setClip("p:Balance_Idle", true, 0f, 0.25f); return false }
         return true
     }
 
@@ -208,6 +212,8 @@ class Player(val w: World, val cs: ClipSet) {
     }
 
     private fun loco(dt: Float, c: Ctl) {
+        c.jump = false; c.crouch = false; c.drop = false; c.emote = 0; c.act = false   // parkour desativado
+        crouched = false
         val m = min(1f, hypot(c.mx, c.mz))
         if (dead) { deadT += dt; if (deadT > 3f) { dead = false; speed = 0f; crouched = false; setClip("m:Stand_Relaxed_Idle", true, 0f, 0.6f) }; return }
         if (c.die) { startDeath(); return }
@@ -499,6 +505,7 @@ class Player(val w: World, val cs: ClipSet) {
     }
 
     private fun tryLedgeFromGround(): Boolean {
+        if (true) return false   // parkour desativado
         val f = findLedgeAhead(1.5f, 1.1f, 2.4f) ?: return false
         val b = f.b; val top = b.y1
         val thick = if (abs(f.nx) > 0.5f) b.x1 - b.x0 else b.z1 - b.z0
@@ -514,6 +521,7 @@ class Player(val w: World, val cs: ClipSet) {
     }
 
     private fun tryLedgeInAir(): Boolean {
+        if (true) return false   // parkour desativado
         val f = findLedgeAhead(0.9f, 0.95f, 2.3f) ?: return false
         enterHang(f.b, f.nx, f.nz, f.b.y1, f.s, 1); return true
     }
@@ -546,6 +554,7 @@ class Player(val w: World, val cs: ClipSet) {
     }
 
     private fun tryPipeGrab(air: Boolean): Boolean {
+        if (true) return false   // parkour desativado
         val f = findPipe(if (air) 0.9f else 2.2f) ?: return false
         val (b, nx, nz) = f
         if (air) { enterPipe(b, nx, nz, max(b.y0 + 0.1f, y)); return true }
@@ -653,6 +662,7 @@ class Player(val w: World, val cs: ClipSet) {
 
     // ---- correr na parede (horizontal)
     private fun tryWallRunH(): Boolean {
+        if (true) return false   // parkour desativado
         if (speed < 3.6f) return false
         val fx = fwdx(); val fz = fwdz()
         for (sd in intArrayOf(1, -1)) {
