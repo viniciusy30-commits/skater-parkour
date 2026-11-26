@@ -1291,6 +1291,19 @@ class Vfx {
             val w = .22f
             quad(bAdd, vsub(a0, vmul(sd, w)), vadd(a0, vmul(sd, w)), vadd(a1, vmul(sd, w)), vsub(a1, vmul(sd, w)), UVQ, c4(1f, .75f, .25f, pu), c4(C_TRAIL63.toFloat(), 0f, 2f, 16f))
             ground(bAdd, a1, .9f, c4(1f, .75f, .25f, pu), c4(C_RING.toFloat(), 0f, 2f, 16f), .05f)
+            // corrente mágica girando em torno do braço/machado enquanto segura o botão
+            try {
+                val g = grips[1]; val tp = tips[1]
+                val ax = vnorm(vsub(tp, g)); val s1 = vnorm(vcross(ax, UP)); val u1 = vcross(s1, ax)
+                val link = c4(1f, .75f, .3f, .95f)
+                for (i in 0 until 14) {
+                    val f = i / 13f; val ang = f * 6.28f * 2.2f + tclock * 9f; val r = .2f - .06f * f
+                    val c = vadd(vadd(g, vmul(ax, -.35f + f * 1.1f)), vadd(vmul(s1, cos(ang) * r), vmul(u1, sin(ang) * r)))
+                    billboard(bAdd, c, .07f, .07f, ang, link, c4(C_RING.toFloat(), 0f, 2f, 16f))
+                    billboard(bAdd, c, .16f, .16f, 0f, c4(1f, .55f, .12f, .3f), c4(C_GMASK.toFloat(), 0f, 2f, 16f))
+                }
+                billboard(bAdd, tp, .45f, .45f, 0f, c4(1f, .6f, .15f, pu * .6f), c4(C_GMASK.toFloat(), 0f, 2f, 16f))
+            } catch (e: Throwable) { }
         }
         glUseProgram(prog)
         glUniformMatrix4fv(uVP, 1, false, vp, 0); glUniform1f(uTime, tclock); glUniform3f(uEye, camE[0], camE[1], camE[2])
