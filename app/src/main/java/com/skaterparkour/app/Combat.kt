@@ -196,7 +196,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         if (!canCast(i)) return
         if (busy && kind == "dead") return
         mana -= cost[i]; cdLeft[i] = cdMax[i]
-        faceFoe(); if (i == 0 || i == 2 || i == 3) lunge(if (i == 3) 1.5f else 3.5f)
+        faceFoe(); mvTotal = 0f; if (i == 3) lunge(1.5f)
         when (i) {
             0 -> skill1(); 1 -> skill2(); 2 -> skill3(); 3 -> skill4(); else -> ultimate()
         }
@@ -232,6 +232,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         val s = segs[segI]
         val len = max(0.01f, s.end - s.start)
         t = s.start + min(segT, len)
+        if (ts > 0f) stepTravel()
         for (e in evs) if (!e.done && skT >= e.at) { e.done = true; e.fn() }
         if (segT >= len) {
             if (segI + 1 < segs.size) {
@@ -259,6 +260,24 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
 
     // ------------------------------------------------------------------------------------ skills
     private var s2Push = 0f
+    // deslocamento junto da animação (passo da Skill 1, pulo da Skill 3): anda até o inimigo ao longo da janela [mvA, mvB]
+    private var mvTotal = 0f; private var mvA = 0f; private var mvB = 1f; private var mvDone = 0f; private var mvDx = 0f; private var mvDz = 0f
+    private fun startTravel(a: Float, b: Float, maxD: Float, stop: Float) {
+        mvTotal = 0f; mvDone = 0f
+        val f = foe; if (f.state == 5) return
+        val dx = f.x - player.x; val dz = f.z - player.z; val d = hypot(dx, dz)
+        val go = (d - stop).coerceIn(0f, maxD)
+        if (d < 0.05f || go < 0.1f) return
+        mvTotal = go; mvA = a; mvB = b; mvDx = dx / d; mvDz = dz / d
+    }
+    private fun stepTravel() {
+        if (mvTotal <= 0f) return
+        val p = smooth((skT - mvA) / (mvB - mvA))
+        val delta = (p - mvDone) * mvTotal; mvDone = p
+        if (delta <= 0f) return
+        val q = floatArrayOf(player.x + mvDx * delta, player.y, player.z + mvDz * delta)
+        player.w.pushOut(q, player.y, Player.R, Player.H, Player.STEP); player.x = q[0]; player.z = q[2]
+    }
     private var fxAdv = 0f
     private var lastClipFx = ""
     /** Depois da pose montada: acha as lâminas, roda o rastro e os efeitos 3D (portados do Visualizador). */
@@ -284,6 +303,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             if (hitFoe(player.x, player.z, 6f, 20f, 1, 1f)) { addShake(0.5f); hitstop = 0.06f; addFlash(0.12f, 0xFFFFD0C8.toInt()) }
         })
         beginSeq("s1", listOf(Seg("c:attack_03", 0f, 1.75f, 0.12f)), ev, false, 1.0f)
+        startTravel(0.25f, 0.75f, 3.5f, 1.7f)
     }
 
     private fun skill2() {
@@ -315,6 +335,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             addShake(1f); hitstop = 0.09f; addFlash(0.25f, 0xFFFFD0C8.toInt())
         })
         beginSeq("s3", listOf(Seg("c:attack_05", 0f, 2.7f, 0.12f)), ev, false, 1.45f)
+        startTravel(0.45f, 1.3f, 5f, 1.9f)
     }
 
     private fun skill4() {
