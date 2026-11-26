@@ -1,3 +1,11 @@
+#id 2026-11-26-f
+#titulo Furia carmesim no buff
+- Runas do machado agora pretas e apagadas (sem dourado); no buff acendem em vermelho carmesim cintilante
+- Tatuagens e olhos tambem acendem em carmesim durante o buff; olhos ficam totalmente vermelhos
+- A boca vira um sorriso sadico de anime com dentes, com transicao suave
+- A transicao sobe em menos de 1 s e desce devagar ao fim do buff, sem tranco
+- Visualizador: botao Furia e velocidade ajustavel de 0.02x a 2x
+
 #id 2026-11-26-e
 #titulo Machados consertados e runas douradas
 - Corrigido o bug dos machados: a metade de cima (a lamina) estava presa na cabeca do guerreiro e a de baixo na mao, por isso a arma esticava e girava de forma estranha; agora o machado inteiro e rigido e segue a mao
