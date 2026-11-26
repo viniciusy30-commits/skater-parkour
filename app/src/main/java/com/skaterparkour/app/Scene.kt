@@ -40,6 +40,8 @@ class WMesh(ctx: Context, file: String, skinned: Boolean, colored: Boolean = fal
     }
 
     fun draw() { glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, 0) }
+    /** Desenha só um trecho do índice (first/count em número de índices): corpo sem machado, ou só um machado. */
+    fun drawRange(first: Int, count: Int) { glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, first * 4) }
 }
 
 /** Malha simples com cor por vértice (cenário e boneco). */

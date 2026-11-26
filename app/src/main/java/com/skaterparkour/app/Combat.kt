@@ -108,7 +108,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     /** Yaw da câmera (definido pelo Game): arrastar o botão da skill 4 aponta relativo à tela. */
     var camYawIn = 0f
     private fun dragYaw(): Float = if (Input.aimActive) camYawIn + atan2(Input.aimX, Input.aimY) else player.yaw
-    private var aim4T = 0f
+    private var aim4T = 0f; private var aimWalkT = 0f
     private fun startAim4() {
         if (!canCast(3) || kind == "dead") return
         aim4T = 0f; busy = true; kind = "s4aim"; guard = false; bufE = ""
@@ -249,14 +249,28 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             player.w.pushOut(p, player.y, Player.R, Player.H, Player.STEP); player.x = p[0]; player.z = p[2]
         }
         if (kind == "s4aim") {
-            aim4T += dt; player.yaw = dragYaw(); t = 0f
-            // anda devagar enquanto segura o botão
+            aim4T += dt; player.yaw = dragYaw()
+            // anda devagar enquanto segura o botão, com a animação de caminhada lenta do Guerreiro (move_walk_strafe_*)
             val m = hypot(mvx, mvz)
-            if (m > 0.15f && dt > 0f) {
-                val sp = 2.2f * min(1f, m) * dt / m
-                val p = floatArrayOf(player.x + mvx * sp, player.y, player.z + mvz * sp)
-                player.w.pushOut(p, player.y, Player.R, Player.H, Player.STEP); player.x = p[0]; player.z = p[2]
+            var want = "c:throw"
+            if (m > 0.15f) {
+                if (dt > 0f) {
+                    val sp = 1.6f * min(1f, m) * dt / m
+                    val p = floatArrayOf(player.x + mvx * sp, player.y, player.z + mvz * sp)
+                    player.w.pushOut(p, player.y, Player.R, Player.H, Player.STEP); player.x = p[0]; player.z = p[2]
+                }
+                var rel = atan2(mvx, mvz) - player.yaw
+                while (rel > PI.toFloat()) rel -= 2f * PI.toFloat(); while (rel < -PI.toFloat()) rel += 2f * PI.toFloat()
+                val a = abs(rel); val l = rel > 0f
+                val sec = if (a < 0.4f) "front" else if (a < 1.2f) (if (l) "frontL45" else "frontR45") else if (a < 1.95f) (if (l) "left" else "right")
+                    else if (a < 2.75f) (if (l) "backL45" else "backR45") else "back"
+                want = "c:move_walk_strafe_$sec"
             }
+            if (want != clip) {
+                clip = want; changed = true; fade = 0.15f; aimWalkT = 0f
+            }
+            if (want == "c:throw") { loop = false; t = min(aim4T, 0.14f) }   // braço armado, parado (como no Visualizador)
+            else { loop = true; aimWalkT += dt * min(1f, m).coerceAtLeast(0.6f); t = aimWalkT }
             // 5 s sem soltar: a skill é cancelada (sem gastar mana nem recarga)
             if (aim4T > 5f) { busy = false; kind = ""; changed = true }
             return
@@ -401,6 +415,8 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             if (hitFoe(player.x, player.z, 3.4f, 25f, 1, 1.5f)) { addShake(0.6f); hitstop = 0.07f }
         })
         beginSeq("s4", listOf(Seg("c:throw", 0f, 0.73f, 0.12f), Seg("c:attack_08", 0f, 1.2f, 0.12f)), ev, false, 1.35f)
+        // a mira já mostrou os primeiros 0,14 s do clipe: continua dali, sem repetir (igual ao Visualizador)
+        skT = 0.14f; segT = 0.14f; t = 0.14f
     }
 
     private fun ultimate() {

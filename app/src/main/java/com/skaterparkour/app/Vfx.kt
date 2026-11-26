@@ -204,6 +204,47 @@ class Vfx {
     private val AX_G = arrayOf(floatArrayOf(0.6582f, 1.3565f, 0.3846f), floatArrayOf(-0.6655f, 1.342f, 0.1195f))
     private val JOINT = intArrayOf(15, 42)
 
+    // ---- machado direito como malha 3D (arremessado na Skill 4): o Renderer lê axeHidden e axeMat
+    private val axW = FloatArray(16)            // repouso -> mundo do machado direito na pose atual (charM * pele[42])
+    private val axA0 = FloatArray(9)            // rotação do machado no instante do arremesso
+    private val axRh = FloatArray(9)            // rotação ao fim do voo (cravado)
+    private var axAx = floatArrayOf(1f, 0f, 0f) // eixo do giro (perpendicular à direção do voo)
+    private var axE = 0f; private var axU = 0f
+    private var axP = floatArrayOf(0f, 0f, 0f)  // centro da cabeça do machado (espaço Vfx)
+    private var thrWall = 0f
+    /** true enquanto o machado está fora da mão (voando, cravado ou voltando): o corpo é desenhado sem ele. */
+    val axeHidden: Boolean get() = thrPh in 1..3
+    /** repouso -> mundo do machado arremessado (coluna-maior), para usar como uM com ossos identidade. */
+    val axeMat = FloatArray(16).also { M4.id(it) }
+    private fun rotAx(ax: FloatArray, a: Float): FloatArray {
+        val c = cos(a); val s = sin(a); val t = 1f - c; val x = ax[0]; val y = ax[1]; val z = ax[2]
+        return floatArrayOf(t * x * x + c, t * x * y + s * z, t * x * z - s * y, t * x * y - s * z, t * y * y + c, t * y * z + s * x,
+            t * x * z + s * y, t * y * z - s * x, t * z * z + c)
+    }
+    private fun mul3(A: FloatArray, B: FloatArray): FloatArray {
+        val o = FloatArray(9)
+        for (c in 0 until 3) for (r in 0 until 3) o[c * 3 + r] = A[r] * B[c * 3] + A[3 + r] * B[c * 3 + 1] + A[6 + r] * B[c * 3 + 2]
+        return o
+    }
+    private fun curA(): FloatArray = floatArrayOf(axW[0], axW[1], axW[2], axW[4], axW[5], axW[6], axW[8], axW[9], axW[10])
+    private fun axeAng(): Float = if (thrPh == 1) axU * TWO_PI * 2.25f else if (thrPh == 3) -TWO_PI * 2f * (1f - axE) else 0f
+    private fun buildAxe() {
+        if (!axeHidden) return
+        val R: FloatArray
+        if (thrPh == 1) R = mul3(rotAx(axAx, axU * TWO_PI * 2.25f), axA0)
+        else if (thrPh == 2) R = axRh
+        else {
+            val Rr = mul3(rotAx(axAx, -TWO_PI * 2f * (1f - axE)), curA()); val k = min(1f, axU * 4f)
+            R = FloatArray(9) { i -> axRh[i] + (Rr[i] - axRh[i]) * k }
+        }
+        val C = AX_C[1]
+        val px = axP[0]; val py = axP[1] + oy; val pz = axP[2]
+        val rcx = R[0] * C[0] + R[3] * C[1] + R[6] * C[2]; val rcy = R[1] * C[0] + R[4] * C[1] + R[7] * C[2]; val rcz = R[2] * C[0] + R[5] * C[1] + R[8] * C[2]
+        val m = axeMat
+        m[0] = R[0]; m[1] = R[1]; m[2] = R[2]; m[3] = 0f; m[4] = R[3]; m[5] = R[4]; m[6] = R[5]; m[7] = 0f
+        m[8] = R[6]; m[9] = R[7]; m[10] = R[8]; m[11] = 0f; m[12] = px - rcx; m[13] = py - rcy; m[14] = pz - rcz; m[15] = 1f
+    }
+
     private val camE = v3(0f, 0f, 0f); private val camR = v3(1f, 0f, 0f); private val camU = v3(0f, 1f, 0f)
     private var tclock = 0f
     private var redT = 0f
@@ -236,6 +277,7 @@ class Vfx {
         oy = oyIn; yaw = yawIn
         M4.xf(charM, 0, pelX, pelY, pelZ, tmp3, 0)
         root[0] = tmp3[0]; root[1] = 0f; root[2] = tmp3[2]
+        M4.mul(axW, 0, charM, 0, skin, JOINT[1] * 16)
         val e1 = v3(0f, 0f, 0f); val e2 = v3(0f, 0f, 0f)
         for (k in 0 until 2) {
             val j = JOINT[k]
@@ -941,15 +983,16 @@ class Vfx {
             thrTg = v3(fx - dx * .1f, .5f, fz - dz * .1f)
         } else thrTg = v3(root[0] + f0[0] * 10f, .5f, root[2] + f0[2] * 10f)
         thrPos = thrP0.copyOf(); thrPh = 1; thrT = 0f; thrFlyQ = 0f
+        System.arraycopy(curA(), 0, axA0, 0, 9); axP = thrP0.copyOf(); axU = 0f; axE = 0f; thrWall = 0f
         chain2()
         val fl = vnorm(vsub(thrTg, thrP0)); val flh = vnorm(v3(fl[0], 0f, fl[2]))
+        axAx = floatArrayOf(flh[2], 0f, -flh[0])
         val GM = C_GMASK; val F21 = C_FLARE21
         add(object : FxO(6f) {
             override fun draw(pp: Float) {
                 if (thrPh == 0 || thrPh >= 4) { life = 0f; return }
-                val th = age * 26f
-                for (k in 4 downTo 1) axeBlade(bAdd, thrPos, th - k * .45f, .22f * (1f - k / 5f), flh)
-                axeBlade(bAdd, thrPos, th, 1f, flh)
+                val th = axeAng()
+                if (thrPh != 2) for (k in 4 downTo 1) axeBlade(bAdd, thrPos, th - k * .45f, .16f * (1f - k / 5f), flh)
                 billboard(bAdd, thrPos, .4f, .4f, 0f, c4(1f, .55f, .12f, .4f), c4(GM.toFloat(), 0f, 2f, 16f))
                 billboard(bAdd, thrPos, .22f, .22f, th, c4(1f, .85f, .5f, .8f), c4(F21.toFloat(), 0f, 2f, 16f))
             }
@@ -962,15 +1005,23 @@ class Vfx {
             val u = min(1f, thrT / TFLY); thrFlyQ = u
             thrPos = v3(thrP0[0] + (thrTg[0] - thrP0[0]) * u, thrP0[1] + (thrTg[1] - thrP0[1]) * u + sin(PIF * u) * .12f, thrP0[2] + (thrTg[2] - thrP0[2]) * u)
             if (Math.random() < .9) thrSpark(thrPos)
-            if (u >= 1f) { thrPh = 2; thrTh = thrT; thrHit(thrPos) }
+            axP = thrPos; axU = u
+            if (u >= 1f) { System.arraycopy(mul3(rotAx(axAx, TWO_PI * 2.25f), axA0), 0, axRh, 0, 9); thrPh = 2; thrTh = thrT; thrHit(thrPos) }
         } else if (thrPh == 2) {
             if (thrT - thrTh >= THOLD) thrPh = 3
         } else if (thrPh == 3) {
             val u = min(1f, (thrT - thrTh - THOLD) / TPULL); val e = u * u * (3f - 2f * u); val Ph = grips[1]
             thrPos = v3(thrTg[0] + (Ph[0] - thrTg[0]) * e, thrTg[1] + (Ph[1] - thrTg[1]) * e + sin(PIF * e) * .1f, thrTg[2] + (Ph[2] - thrTg[2]) * e)
+            // a malha volta para a posição real da cabeça do machado na mão (sem salto ao reencaixar)
+            val Th = tips[1]
+            axE = e; axU = u
+            axP = v3(thrTg[0] + (Th[0] - thrTg[0]) * e, thrTg[1] + (Th[1] - thrTg[1]) * e + sin(PIF * e) * .1f, thrTg[2] + (Th[2] - thrTg[2]) * e)
             if (Math.random() < .7) thrSpark(thrPos)
             if (u >= 1f) { thrPh = 4; thrCatch(Ph.copyOf()) }
         }
+        if (thrPh in 1..3 && thrT > 3f) thrPh = 4   // segurança: nunca deixa o machado sumido
+        if (thrPh == 2) axP = thrPos
+        buildAxe()
     }
 
     // ================================================================ rastro dourado das lâminas (TRL) e faíscas
@@ -1264,6 +1315,7 @@ class Vfx {
         trailUpd(adv)
         swTick(dt)
         thrTick(adv)
+        if (thrPh in 1..3) { thrWall += dt; if (thrWall > 4f) thrPh = 4 } else thrWall = 0f
         var i = fxs.size - 1
         while (i >= 0) {
             val f = fxs[i]

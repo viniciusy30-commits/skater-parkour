@@ -10,6 +10,11 @@ import javax.microedition.khronos.opengles.GL10
 import kotlin.math.max
 import kotlin.math.min
 
+/** char.msh: no fim do índice ficam os dois machados, 30000 índices cada: [corpo][machado esquerdo?][...] (ver tools/sentinel/add_weapon.py). */
+private const val AXE_R_FIRST = 665868   // machado direito (osso 42): primeiro índice
+private const val AXE_L_FIRST = 695868   // machado esquerdo (osso 15): primeiro índice
+private const val AXE_IDX = 30000
+
 class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceView.Renderer {
     @Volatile var game: Game? = null
     @Volatile var loadMsg = "Carregando…"
@@ -111,7 +116,18 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
         glUniformMatrix4fv(u["uVP"]!!, 1, false, vp, 0); glUniformMatrix4fv(u["uM"]!!, 1, false, g.charM, 0)
         glUniform3fv(u["uCtr"]!!, 1, body.ctr, 0); glUniform3fv(u["uExt"]!!, 1, body.ext, 0); glUniform3fv(u["uCam"]!!, 1, g.eye, 0)
         glUniform1f(u["uTm"]!!, (now / 1_000_000L % 600_000L) / 1000f)
-        body.draw()
+        val vfx0 = g.combat.vfx
+        if (vfx0.axeHidden) {
+            // Skill 4: o machado direito sai da mão. Corpo + machado esquerdo com o esqueleto, e o machado direito
+            // como objeto próprio (ossos identidade + matriz de mundo calculada pelo Vfx) voando girando.
+            body.drawRange(0, AXE_R_FIRST)
+            body.drawRange(AXE_L_FIRST, AXE_IDX)
+            boneBuf.clear(); for (j in 0 until nJ) { for (q in 0 until 16) boneBuf.put(if (q % 5 == 0) 1f else 0f) }; boneBuf.flip()
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4, nJ, GL_RGBA, GL_FLOAT, boneBuf)
+            glUniformMatrix4fv(u["uM"]!!, 1, false, vfx0.axeMat, 0)
+            body.drawRange(AXE_R_FIRST, AXE_IDX)
+            glUniformMatrix4fv(u["uM"]!!, 1, false, g.charM, 0)
+        } else body.draw()
         // inimigo (Guerreiro Sombra): mesma malha, outro esqueleto
         boneBuf.clear(); boneBuf.put(g.foeSkel.skin, 0, nJ * 16); boneBuf.flip()
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4, nJ, GL_RGBA, GL_FLOAT, boneBuf)
