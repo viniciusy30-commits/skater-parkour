@@ -105,6 +105,9 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         startBasic(1, busy && kind == "basic")
     }
     private fun aimYaw(): Float = if (hypot(mvx, mvz) > 0.2f) atan2(mvx, mvz) else player.yaw
+    /** Yaw da câmera (definido pelo Game): arrastar o botão da skill 4 aponta relativo à tela. */
+    var camYawIn = 0f
+    private fun dragYaw(): Float = if (Input.aimActive) camYawIn + atan2(Input.aimX, Input.aimY) else player.yaw
     private var aim4T = 0f
     private fun startAim4() {
         if (!canCast(3) || kind == "dead") return
@@ -214,7 +217,8 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         if (!canCast(i)) return
         if (busy && kind == "dead") return
         mana -= cost[i]; cdLeft[i] = cdMax[i]
-        player.yaw = aimYaw(); mvTotal = 0f
+        if (i != 3) player.yaw = aimYaw()
+        mvTotal = 0f
         when (i) {
             0 -> skill1(); 1 -> skill2(); 2 -> skill3(); 3 -> skill4(); else -> ultimate()
         }
@@ -245,8 +249,16 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             player.w.pushOut(p, player.y, Player.R, Player.H, Player.STEP); player.x = p[0]; player.z = p[2]
         }
         if (kind == "s4aim") {
-            aim4T += dt; player.yaw = aimYaw(); t = 0f
-            if (aim4T > 6f) { busy = false; kind = "" }
+            aim4T += dt; player.yaw = dragYaw(); t = 0f
+            // anda devagar enquanto segura o botão
+            val m = hypot(mvx, mvz)
+            if (m > 0.15f && dt > 0f) {
+                val sp = 2.2f * min(1f, m) * dt / m
+                val p = floatArrayOf(player.x + mvx * sp, player.y, player.z + mvz * sp)
+                player.w.pushOut(p, player.y, Player.R, Player.H, Player.STEP); player.x = p[0]; player.z = p[2]
+            }
+            // 5 s sem soltar: a skill é cancelada (sem gastar mana nem recarga)
+            if (aim4T > 5f) { busy = false; kind = ""; changed = true }
             return
         }
         if (!busy) return

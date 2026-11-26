@@ -143,7 +143,7 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         ctl.jumpHeld = Input.jumpHeld; ctl.crouchHeld = Input.crouchHeld
         ctl.aim = Input.aimMode; ctl.aimYaw = camYaw
         if (emote) emoteI = emoteI % 8 + 1
-        combat.mvx = ctl.mx; combat.mvz = ctl.mz
+        combat.mvx = ctl.mx; combat.mvz = ctl.mz; combat.camYawIn = camYaw
         if (combat.busy && combat.cancelable() && hypot(ctl.mx, ctl.mz) > 0.6f) combat.interrupt()
         combat.update(dt, cbEv, player.st == Player.St.LOCO)
         if (combat.busy) { ctl.mx = 0f; ctl.mz = 0f; jump = false; crouch = false; drop = false; emote = false; die = false; act = false }

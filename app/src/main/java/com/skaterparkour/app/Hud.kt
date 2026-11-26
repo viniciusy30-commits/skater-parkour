@@ -75,7 +75,8 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
             "prev" -> Input.press("prev")
             "next" -> Input.press("next")
             "gear" -> onSettings()
-            "atk", "s1", "s2", "s3", "s4", "ult", "dash" -> Input.press(b.id)
+            "s4" -> { Input.aimActive = false; Input.press("s4") }
+            "atk", "s1", "s2", "s3", "ult", "dash" -> Input.press(b.id)
             "mode" -> { Input.combatMode = !Input.combatMode; Input.jumpHeld = false; Input.crouchHeld = false; Input.aimMode = false }
         }
     }
@@ -114,6 +115,10 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
                             Input.jx = dx / m; Input.jy = -dy / m
                         }
                         "cam" -> cams.add(id)
+                        "btn:s4" -> btns.firstOrNull { it.id == "s4" }?.let { b ->
+                            val dx = x - b.x; val dy = y - b.y; val l = hypot(dx, dy)
+                            if (l > d(14f)) { Input.aimX = dx / l; Input.aimY = -dy / l; Input.aimActive = true }
+                        }
                     }
                 }
                 if (cams.size >= 2) {
