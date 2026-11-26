@@ -1034,6 +1034,45 @@ class Vfx {
     private val TL = .55f
     private val trBuf = FloatArray(9 * 6 * 6000)
 
+    private var s1On = false
+    fun s1Mode(on: Boolean) { s1On = on }
+
+    /** Skill 1: ao fim de cada golpe de machado, uma onda de corte em meia-lua, desenhada sobre o arco real da lâmina, segue para frente. */
+    private fun s1Arc(s: Int) {
+        val src = trails[s]
+        if (src.size < 4) return
+        val pts = src.takeLast(16)
+        val n = pts.size
+        val pa = Array(n) { pts[it].a.copyOf() }; val pb = Array(n) { pts[it].b.copyOf() }
+        val fl = vnorm(v3(sin(yaw), 0f, cos(yaw)))
+        val T87 = C_TRAIL87; val T63 = C_TRAIL63; val SPK = C_SPARK
+        add(object : FxO(.4f) {
+            override fun draw(pp: Float) {
+                val q = min(1f, age / life); val e = 1f - (1f - q).pow(3f)
+                val A = (1f - q).pow(1.4f)
+                val tv = vmul(fl, e * 3.2f)
+                fun layer(hk: Float, col: V, cell: Int) {
+                    for (i in 0 until n - 1) {
+                        val c0 = vadd(vmul(vadd(pa[i], pb[i]), .5f), tv); val c1 = vadd(vmul(vadd(pa[i + 1], pb[i + 1]), .5f), tv)
+                        val w0 = vsub(pb[i], pa[i]); val w1 = vsub(pb[i + 1], pa[i + 1])
+                        val t0 = sin(PIF * (i + .5f) / (n - 1)).pow(.6f); val t1 = sin(PIF * (i + 1.5f) / (n - 1)).pow(.6f)
+                        val k0 = vmul(w0, hk * (1f + 1.1f * q) * t0); val k1 = vmul(w1, hk * (1f + 1.1f * q) * t1)
+                        val s0 = i.toFloat() / (n - 1) * 2f - 1f; val s1 = (i + 1).toFloat() / (n - 1) * 2f - 1f
+                        quad(bAdd, vsub(c0, k0), vsub(c1, k1), vadd(c1, k1), vadd(c0, k0), floatArrayOf(s0, -1f, s1, -1f, s1, 1f, s0, 1f), col, c4(cell.toFloat(), 0f, 2f, 16f))
+                    }
+                }
+                layer(1.5f, c4(1f, .42f, .08f, .22f * A), T87)
+                layer(.95f, c4(1f, .72f, .22f, .75f * A), T87)
+                layer(.38f, c4(1f, .97f, .8f, A), T63)
+            }
+        })
+        for (i in 0 until n step 2) {
+            val p = vadd(vmul(vadd(pa[i], pb[i]), .5f), vmul(fl, .2f))
+            spr(p = p, v = vadd(vmul(fl, rnd(1.5f, 4f)), v3(rnd(-.5f, .5f), rnd(0f, 1f), rnd(-.5f, .5f))), dr = 2f, life = rnd(.3f, .55f), c0 = C_GLOW, s = rnd(.025f, .05f), col = c4(1f, .66f, .2f, 1f), env = EN_FADE)
+            if (Math.random() < .5) spr(p = p, life = .08f, c0 = SPK + (if (Math.random() < .5) 0 else 1), m = 2, s = rnd(.18f, .3f), rot = rnd(0f, 6.28f), col = c4(1f, .8f, .35f, .9f), env = EN_FADE)
+        }
+    }
+
     private fun trailTick(ad: Float, atk: Boolean, clipChanged: Boolean) {
         if (clipChanged || ad < -1e-4f || ad > .25f) {
             for (t in trails) t.clear()
@@ -1048,9 +1087,11 @@ class Vfx {
             val pt = prevB[s]
             var sp = 0f
             if (pt != null) sp = vlen(vsub(trB[s], pt)) / ad / 1.8f
+            val wasOn = swOn[s]
             if (!swOn[s] && sp > 2.4f && sp >= swPk[s]) swOn[s] = true
             if (swOn[s]) { swPk[s] = max(swPk[s], sp); if (sp < swPk[s] * .62f) swOn[s] = false }
             else if (sp < 1.3f) swPk[s] = 0f
+            if (wasOn && !swOn[s] && s1On) s1Arc(s)
             val kt = if (swOn[s]) cl((sp - 1.4f) / 2.6f, 0f, 1f) else 0f
             swKd[s] += (kt - swKd[s]) * (if (kt > swKd[s]) .55f else .22f)
             if (swKd[s] > .015f) tr.add(Smp(trA[s].copyOf(), trB[s].copyOf(), 0f, swKd[s]))

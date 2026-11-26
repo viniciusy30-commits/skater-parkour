@@ -319,11 +319,26 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private var s2Wait = false; private var s2WaitT = 0f
     // deslocamento junto da animação (passo da Skill 1, pulo da Skill 3): anda até o inimigo ao longo da janela [mvA, mvB]
     private var mvTotal = 0f; private var mvA = 0f; private var mvB = 1f; private var mvDone = 0f; private var mvDx = 0f; private var mvDz = 0f
+    private var ftab: FloatArray? = null
+    /** Avanço guiado pelo pé de apoio: tabela (m acumulados por quadro de 1/30 s) tirada do próprio clipe. O corpo só anda quando o pé empurra. */
+    private fun startFootTravel(tab: FloatArray) { ftab = tab; mvDone = 0f; mvTotal = 1f; mvDx = fwdX(); mvDz = fwdZ() }
+    private val S1_FOOT = floatArrayOf(0.000f,0.004f,0.005f,0.008f,0.019f,0.034f,0.048f,0.061f,0.073f,0.085f,0.097f,0.110f,0.125f,0.141f,0.159f,0.206f,0.302f,0.423f,0.549f,0.549f,0.549f,0.549f,0.549f,0.549f,0.679f,0.755f,0.811f,0.852f,0.873f,0.887f,0.903f,0.913f,0.923f,0.932f,0.941f,0.948f,0.957f,0.967f,0.980f,0.998f,1.030f,1.075f,1.120f,1.160f,1.196f,1.225f,1.249f,1.274f,1.297f,1.320f,1.341f,1.362f,1.382f,1.386f,1.386f,1.386f,1.386f,1.417f,1.456f,1.486f,1.498f,1.501f,1.501f,1.502f,1.503f,1.503f,1.503f,1.503f,1.503f,1.503f,1.503f,1.503f)
     private fun startTravel(a: Float, b: Float, dist: Float) {
-        mvDone = 0f; mvTotal = dist; mvA = a; mvB = b; mvDx = fwdX(); mvDz = fwdZ()
+        ftab = null; mvDone = 0f; mvTotal = dist; mvA = a; mvB = b; mvDx = fwdX(); mvDz = fwdZ()
     }
     private fun stepTravel() {
         if (mvTotal <= 0f) return
+        val tb = ftab
+        if (tb != null) {
+            val f = max(0f, t) * 30f
+            val i0 = min(f.toInt(), tb.size - 2); val a = min(1f, f - i0)
+            val target = tb[i0] + (tb[i0 + 1] - tb[i0]) * a
+            val dl = target - mvDone; mvDone = target
+            if (dl <= 0f) return
+            val qq = floatArrayOf(player.x + mvDx * dl, player.y, player.z + mvDz * dl)
+            player.w.pushOut(qq, player.y, Player.R, Player.H, Player.STEP); player.x = qq[0]; player.z = qq[2]
+            return
+        }
         val p = smooth((skT - mvA) / (mvB - mvA))
         val delta = (p - mvDone) * mvTotal; mvDone = p
         if (delta <= 0f) return
@@ -335,6 +350,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     /** Depois da pose montada: acha as lâminas, roda o rastro e os efeitos 3D (portados do Visualizador). */
     fun postPose(dt: Float, skin: FloatArray, charM: FloatArray, pelX: Float, pelY: Float, pelZ: Float) {
         vfx.aimSet(kind == "s4aim", player.yaw)
+        vfx.s1Mode(busy && kind == "s1")
         vfx.setPal(if (ultT > 0f) "ult" else if (kind == "s3") "earth" else "gold")
         vfx.pose(skin, charM, pelX, pelY, pelZ, player.y, player.yaw)
         val atk = busy && kind != "dead" && (clip.startsWith("c:attack") || clip.startsWith("c:Combo"))
@@ -347,14 +363,13 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         ev.add(Ev(0.25f) { sfx("s1_charge") })
         ev.add(Ev(0.72f) {
             sfx("s1_launch")
-            vfx.xBlade(player.x + fwdX() * 2.4f, player.y + 1f, player.z + fwdZ() * 2.4f, 0.2f)
         })
         ev.add(Ev(0.92f) {
             sfx("s1_impact")
             if (hitFoe(player.x + fwdX() * 2.4f, player.z + fwdZ() * 2.4f, 2.8f, 20f, 1, 1f)) { addShake(0.5f); hitstop = 0.06f; addFlash(0.12f, 0xFFFFD0C8.toInt()) }
         })
         beginSeq("s1", listOf(Seg("c:attack_03", 0f, 1.75f, 0.12f)), ev, false, 1.0f)
-        startTravel(0.25f, 0.75f, 2.0f)
+        startFootTravel(S1_FOOT)
     }
 
     private fun skill2() {
