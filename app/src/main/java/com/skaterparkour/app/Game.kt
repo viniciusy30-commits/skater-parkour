@@ -25,6 +25,8 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
     var station = 0
     var camYaw = 0f; private var camPitch = .30f; private var camDist = 4.6f; private var camDistSm = 4.6f
     private val tgt = FloatArray(3)
+    private var lolOn = false; private var parkYaw = 0f; private var lolDist = 11f
+    private val LOL_YAW = 0.785f; private val LOL_PITCH = 0.95f; private val LOL_MIN = 7.5f; private val LOL_MAX = 16f
     var underwater = false
     private var emoteI = 0
     private var lt = 0f; private var lclip = "c:idle_00"; private var idleT = 0f
@@ -106,15 +108,26 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         val dt = dtIn.coerceIn(0f, 0.1f)
         time += dt
         ev.clear(); cbEv.clear(); Input.take(cam, ev)
-        camYaw -= cam[0]
-        camPitch = clampf(camPitch + cam[1], -.15f, 1.35f)
-        camDist = clampf(camDist / cam[2], 2.2f, 14f)
+        // câmera estilo LoL no modo LUTA: ângulo fixo de cima, só zoom (limitado: não chega perto a ponto de ver falhas do modelo)
+        val lol = Input.combatMode
+        if (lol) {
+            if (!lolOn) { lolOn = true; parkYaw = camYaw }
+            camYaw = LOL_YAW
+            camPitch += (LOL_PITCH - camPitch) * min(1f, dt * 5f)
+            lolDist = clampf(lolDist / cam[2], LOL_MIN, LOL_MAX)
+            camDist = lolDist
+        } else {
+            if (lolOn) { lolOn = false; camYaw = parkYaw; camPitch = .30f; camDist = 4.6f }
+            camYaw -= cam[0]
+            camPitch = clampf(camPitch + cam[1], -.15f, 1.35f)
+            camDist = clampf(camDist / cam[2], 2.2f, 14f)
+        }
         var jump = false; var crouch = false; var drop = false; var emote = false; var die = false; var act = false
         for (e in ev) when (e) {
             "jump" -> jump = false; "crouch" -> crouch = false; "drop" -> drop = false
             "emote" -> emote = false; "die" -> die = true; "act" -> act = false
             "next" -> goStation(station + 1); "prev" -> goStation(station - 1)
-            "atk", "s1", "s2", "s3", "s4", "ult", "dash" -> cbEv.add(e)
+            "atk", "s1", "s2", "s3", "s4", "s4up", "ult", "dash" -> cbEv.add(e)
         }
         // joystick -> direção no mundo (relativa à câmera)
         val jx = Input.jx; val jy = Input.jy

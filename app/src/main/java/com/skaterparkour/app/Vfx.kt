@@ -207,6 +207,8 @@ class Vfx {
     private val camE = v3(0f, 0f, 0f); private val camR = v3(1f, 0f, 0f); private val camU = v3(0f, 1f, 0f)
     private var tclock = 0f
     private var redT = 0f
+    private var aimOn = false; private var aimY = 0f
+    fun aimSet(on: Boolean, y: Float) { aimOn = on; aimY = y }
 
     private val palGold = Pal(c4(1f, .52f, .12f, 1f), c4(1f, .78f, .3f, 1f))
     private val palEarth = Pal(c4(1f, .42f, .1f, 1f), c4(1f, .7f, .25f, 1f))
@@ -937,7 +939,7 @@ class Vfx {
         if (hit) {
             var dx = fx - root[0]; var dz = fz - root[2]; val n = max(.001f, hypot(dx, dz)); dx /= n; dz /= n
             thrTg = v3(fx - dx * .1f, .5f, fz - dz * .1f)
-        } else thrTg = v3(root[0] + f0[0] * 6f, .5f, root[2] + f0[2] * 6f)
+        } else thrTg = v3(root[0] + f0[0] * 10f, .5f, root[2] + f0[2] * 10f)
         thrPos = thrP0.copyOf(); thrPh = 1; thrT = 0f; thrFlyQ = 0f
         chain2()
         val fl = vnorm(vsub(thrTg, thrP0)); val flh = vnorm(v3(fl[0], 0f, fl[2]))
@@ -1282,6 +1284,13 @@ class Vfx {
             if (f.age >= f.delay) {
                 try { f.draw(min(1f, (f.age - f.delay) / (if (f.life == 0f) 1f else f.life))) } catch (e: Throwable) { }
             }
+        }
+        if (aimOn) {
+            val d = v3(sin(aimY), 0f, cos(aimY)); val sd = v3(cos(aimY), 0f, -sin(aimY)); val pu = .6f + .25f * sin(tclock * 8f)
+            val a0 = v3(root[0] + d[0] * .8f, 0f, root[2] + d[2] * .8f); val a1 = v3(root[0] + d[0] * 10f, 0f, root[2] + d[2] * 10f)
+            val w = .22f
+            quad(bAdd, vsub(a0, vmul(sd, w)), vadd(a0, vmul(sd, w)), vadd(a1, vmul(sd, w)), vsub(a1, vmul(sd, w)), UVQ, c4(1f, .75f, .25f, pu), c4(C_TRAIL63.toFloat(), 0f, 2f, 16f))
+            ground(bAdd, a1, .9f, c4(1f, .75f, .25f, pu), c4(C_RING.toFloat(), 0f, 2f, 16f), .05f)
         }
         glUseProgram(prog)
         glUniformMatrix4fv(uVP, 1, false, vp, 0); glUniform1f(uTime, tclock); glUniform3f(uEye, camE[0], camE[1], camE[2])

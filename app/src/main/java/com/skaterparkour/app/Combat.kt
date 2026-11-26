@@ -74,12 +74,14 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         when (e) {
             "atk" -> doAtk()
             "dash" -> doDash()
-            "s1" -> cast(0); "s2" -> cast(1); "s3" -> cast(2); "s4" -> cast(3); "ult" -> cast(4)
+            "s1" -> cast(0); "s2" -> cast(1); "s3" -> cast(2); "s4" -> startAim4(); "ult" -> cast(4)
         }
     }
     private fun handle(e: String) {
         if (kind == "dead") return
+        if (e == "s4up") { if (kind == "s4aim") cast(3); return }
         if (e == "dash") { if (kind != "ult") exec(e); return }   // esquiva cancela quase tudo, na hora
+        if (e == "s4") { if (!busy || cancelable()) exec(e); return }
         if (!busy || cancelable()) exec(e) else { bufE = e; bufT = clock }
     }
     private fun doDash() {
@@ -96,8 +98,25 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         vfx.dust(player.x, player.z, 0.5f, 6)
     }
     private fun doAtk() {
-        // estilo LoL: um único golpe por toque, mirando no alvo (avança até ele sozinho)
-        startBasic(0, busy && kind == "basic")
+        // estilo LoL: um único golpe (o diagonal subindo), só se o inimigo estiver no alcance; sem deslizar
+        if (kind == "dead") return
+        val f = foe
+        if (f.state == 5 || hypot(f.x - player.x, f.z - player.z) > 3.2f) return
+        startBasic(1, busy && kind == "basic")
+    }
+    private fun aimYaw(): Float = if (hypot(mvx, mvz) > 0.2f) atan2(mvx, mvz) else player.yaw
+    private var aim4T = 0f
+    private fun startAim4() {
+        if (!canCast(3) || kind == "dead") return
+        aim4T = 0f; busy = true; kind = "s4aim"; guard = false; bufE = ""
+        segs = listOf(Seg("c:throw", 0f, 0.01f, 0.12f)); evs = emptyList(); segI = 0; segT = 0f; skT = 0f; cancelT = 1e9f
+        clip = "c:throw"; t = 0f; loop = false; changed = true; fade = 0.12f
+    }
+    private fun inLine(len: Float, wid: Float): Boolean {
+        val f = foe; if (f.state == 5) return false
+        val dx = f.x - player.x; val dz = f.z - player.z
+        val fw = dx * fwdX() + dz * fwdZ(); val lt = abs(dx * fwdZ() - dz * fwdX())
+        return fw in 0f..len && lt < wid
     }
     /** Avanço automático até o inimigo: o golpe sempre conecta sem precisar de precisão. */
     private fun lunge(maxD: Float) {
@@ -173,7 +192,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private fun startBasic(idx: Int, cont: Boolean) {
         basicIdx = idx; basicQ = false
         val s0 = BSEG[idx][0]; val s1 = BSEG[idx][1]
-        faceFoe(); lunge(ch.lungeMax); basicEnd = clock
+        faceFoe(); basicEnd = clock
         val ev = ArrayList<Ev>()
         fun hit(clipT: Float, dmg: Float, big: Boolean) {
             ev.add(Ev(clipT - s0 - 0.06f) { sfx("swing" + (1 + (idx % 3)), 0.8f) })
@@ -184,7 +203,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         }
         when (idx) {
             0 -> hit(0.93f, 8f, false)
-            1 -> hit(1.53f, 8f, false)
+            1 -> hit(1.53f, 11f, false)
             2 -> hit(2.17f, 10f, false)
             else -> { hit(2.83f, 10f, false); hit(3.23f, 18f, true) }
         }
@@ -195,7 +214,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         if (!canCast(i)) return
         if (busy && kind == "dead") return
         mana -= cost[i]; cdLeft[i] = cdMax[i]
-        faceFoe(); mvTotal = 0f; if (i == 3) lunge(1.5f)
+        player.yaw = aimYaw(); mvTotal = 0f
         when (i) {
             0 -> skill1(); 1 -> skill2(); 2 -> skill3(); 3 -> skill4(); else -> ultimate()
         }
@@ -225,6 +244,11 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             val p = floatArrayOf(player.x + lvx * st, player.y, player.z + lvz * st)
             player.w.pushOut(p, player.y, Player.R, Player.H, Player.STEP); player.x = p[0]; player.z = p[2]
         }
+        if (kind == "s4aim") {
+            aim4T += dt; player.yaw = aimYaw(); t = 0f
+            if (aim4T > 6f) { busy = false; kind = "" }
+            return
+        }
         if (!busy) return
         val ts = dt * timeScale()
         skT += ts; segT += ts
@@ -233,6 +257,11 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         t = s.start + min(segT, len)
         if (ts > 0f) stepTravel()
         for (e in evs) if (!e.done && skT >= e.at) { e.done = true; e.fn() }
+        if (segT >= len && kind == "s2" && s2Wait) {
+            s2WaitT += dt
+            if (s2WaitT >= 1.8f) { s2Wait = false; guard = false; finish() }
+            return
+        }
         if (segT >= len) {
             if (segI + 1 < segs.size) {
                 segI++; segT = 0f
@@ -259,15 +288,11 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
 
     // ------------------------------------------------------------------------------------ skills
     private var s2Push = 0f
+    private var s2Wait = false; private var s2WaitT = 0f
     // deslocamento junto da animação (passo da Skill 1, pulo da Skill 3): anda até o inimigo ao longo da janela [mvA, mvB]
     private var mvTotal = 0f; private var mvA = 0f; private var mvB = 1f; private var mvDone = 0f; private var mvDx = 0f; private var mvDz = 0f
-    private fun startTravel(a: Float, b: Float, maxD: Float, stop: Float) {
-        mvTotal = 0f; mvDone = 0f
-        val f = foe; if (f.state == 5) return
-        val dx = f.x - player.x; val dz = f.z - player.z; val d = hypot(dx, dz)
-        val go = (d - stop).coerceIn(0f, maxD)
-        if (d < 0.05f || go < 0.1f) return
-        mvTotal = go; mvA = a; mvB = b; mvDx = dx / d; mvDz = dz / d
+    private fun startTravel(a: Float, b: Float, dist: Float) {
+        mvDone = 0f; mvTotal = dist; mvA = a; mvB = b; mvDx = fwdX(); mvDz = fwdZ()
     }
     private fun stepTravel() {
         if (mvTotal <= 0f) return
@@ -281,6 +306,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private var lastClipFx = ""
     /** Depois da pose montada: acha as lâminas, roda o rastro e os efeitos 3D (portados do Visualizador). */
     fun postPose(dt: Float, skin: FloatArray, charM: FloatArray, pelX: Float, pelY: Float, pelZ: Float) {
+        vfx.aimSet(kind == "s4aim", player.yaw)
         vfx.setPal(if (ultT > 0f) "ult" else if (kind == "s3") "earth" else "gold")
         vfx.pose(skin, charM, pelX, pelY, pelZ, player.y, player.yaw)
         val atk = busy && kind != "dead" && (clip.startsWith("c:attack") || clip.startsWith("c:Combo"))
@@ -293,31 +319,33 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         ev.add(Ev(0.25f) { sfx("s1_charge") })
         ev.add(Ev(0.72f) {
             sfx("s1_launch")
-            val f = foe
-            if (f.state != 5 && hypot(f.x - player.x, f.z - player.z) <= 6f) vfx.xBlade(f.x, f.y + 1f, f.z, 0.2f)
-            else vfx.xBlade(player.x + fwdX() * 1.15f, player.y + 1f, player.z + fwdZ() * 1.15f, 0.2f)
+            vfx.xBlade(player.x + fwdX() * 2.4f, player.y + 1f, player.z + fwdZ() * 2.4f, 0.2f)
         })
         ev.add(Ev(0.92f) {
             sfx("s1_impact")
-            if (hitFoe(player.x, player.z, 6f, 20f, 1, 1f)) { addShake(0.5f); hitstop = 0.06f; addFlash(0.12f, 0xFFFFD0C8.toInt()) }
+            if (hitFoe(player.x + fwdX() * 2.4f, player.z + fwdZ() * 2.4f, 2.8f, 20f, 1, 1f)) { addShake(0.5f); hitstop = 0.06f; addFlash(0.12f, 0xFFFFD0C8.toInt()) }
         })
         beginSeq("s1", listOf(Seg("c:attack_03", 0f, 1.75f, 0.12f)), ev, false, 1.0f)
-        startTravel(0.25f, 0.75f, 3.5f, 1.7f)
+        startTravel(0.25f, 0.75f, 2.0f)
     }
 
     private fun skill2() {
-        parried = false
+        parried = false; s2Wait = true; s2WaitT = 0f
         val ev = ArrayList<Ev>()
-        ev.add(Ev(0.04f) { sfx("s2_guard"); guard = true; vfx.guardAura(0.95f) })
-        ev.add(Ev(1.0f) { guard = false })
-        ev.add(Ev(1.02f) {
+        ev.add(Ev(0.04f) { sfx("s2_guard"); guard = true; vfx.guardAura(1.9f) })
+        beginSeq("s2", listOf(Seg("c:defence", 0f, 0.42f, 0.12f)), ev, false, 1e9f)
+    }
+    /** Só acontece se o inimigo bater durante o parry: contra-ataque em onda. */
+    private fun s2Counter() {
+        s2Wait = false
+        val ev = ArrayList<Ev>()
+        ev.add(Ev(0.6f) {
             sfx("s2_wave"); sfx("s2_thud", 0.8f)
-            val dmg = if (parried) 35f else 25f
-            hitFoe(player.x, player.z, 5f, dmg, 2, 3.5f)
+            hitFoe(player.x, player.z, 5f, 35f, 2, 3.5f)
             vfx.counterWave(); s2Push = 0.32f
             addShake(1f); hitstop = 0.08f
         })
-        beginSeq("s2", listOf(Seg("c:defence", 0f, 0.42f, 0.12f), Seg("c:attack_07", 0.15f, 2.0f, 0.15f)), ev, false, 1.12f)
+        beginSeq("s2", listOf(Seg("c:attack_07", 0.15f, 2.0f, 0.15f)), ev, false, 0.7f)
     }
 
     private fun skill3() {
@@ -334,20 +362,20 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             addShake(1f); hitstop = 0.09f; addFlash(0.25f, 0xFFFFD0C8.toInt())
         })
         beginSeq("s3", listOf(Seg("c:attack_05", 0f, 2.7f, 0.12f)), ev, false, 1.45f)
-        startTravel(0.45f, 1.3f, 5f, 1.9f)
+        startTravel(0.45f, 1.3f, 4.0f)
     }
 
     private fun skill4() {
         val ev = ArrayList<Ev>()
-        ev.add(Ev(0.15f) { vfx.throwStart(foe.x, foe.z, foe.state != 5 && hypot(foe.x - player.x, foe.z - player.z) <= 14f) })
+        ev.add(Ev(0.15f) { vfx.throwStart(foe.x, foe.z, inLine(10f, 1.1f)) })
         ev.add(Ev(0.2f) {
             sfx("chain_throw"); sfx("axe_whir", 0.8f)
         })
         ev.add(Ev(0.45f) {
             val f = foe
-            if (f.state != 5 && hypot(f.x - player.x, f.z - player.z) <= 14f) {
+            if (inLine(10f, 1.1f)) {
                 sfx("chain_snap"); sfx("axe_hit2"); sfx("chain_pull", 0.9f, 1f, 0.1f)
-                hitFoe(player.x, player.z, 14.5f, 15f, 0, 0f)
+                hitFoe(f.x, f.z, 1f, 15f, 0, 0f)
                 if (f.state != 5) {
                     f.state = 2; f.stT = 0f; f.hold = 1.9f; f.play("c:stun", true, 0.1f)
                     f.pullT = 0.6f; f.pullSx = f.x; f.pullSz = f.z
@@ -374,7 +402,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             ev.add(Ev(times[i]) {
                 if (last) { sfx("ult_final"); sfx("ult_debris", 0.9f); sfx("ult_slam", 0.8f, 0.9f) }
                 else { sfx("ult_slam", 0.8f + i * 0.08f); sfx("ult_debris", 0.55f + i * 0.08f) }
-                hitFoe(player.x, player.z, 5f, if (last) 30f else 14f, if (last) 2 else 1, if (last) 4f else 1.2f)
+                hitFoe(player.x + fwdX() * 2f, player.z + fwdZ() * 2f, 4.5f, if (last) 30f else 14f, if (last) 2 else 1, if (last) 4f else 1.2f)
                 vfx.ultHit(i, last)
                 addShake(if (last) 3f else 1.5f + i * 0.3f); hitstop = if (last) 0.16f else 0.06f
                 if (last) addFlash(0.35f, 0xFFFF2A1A.toInt())
@@ -424,6 +452,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             f.state = 2; f.stT = 0f; f.hold = 1.4f; f.play("c:hit_heavy_front", false, 0.06f)
             pop(player.x, player.y + 2.1f, player.z, "DEFENDIDO!", GOLD)
             vfx.deflect()
+            if (kind == "s2" && s2Wait) s2Counter()
             addShake(0.5f); hitstop = 0.07f; addFlash(0.2f, 0xFFFFE9B0.toInt())
             return
         }

@@ -84,6 +84,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
         b.held = false
         if (b.id == "jump") Input.jumpHeld = false
         if (b.id == "crouch") Input.crouchHeld = false
+        if (b.id == "s4") Input.press("s4up")
     }
 
     @SuppressLint("ClickableViewAccessibility")
