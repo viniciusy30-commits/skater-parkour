@@ -186,7 +186,7 @@ void main(){ vec4 p=vec4(uCtr+aPos.xyz*uExt,1.); mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.
     /** Guerreiro com textura do modelo original: cor (atlas) + normal map (RG) e metal (B) no segundo atlas, mesma iluminação de antes. */
     const val CHAR_TFS = """#version 300 es
 precision highp float;
-in vec2 vUV; in float vMet; in vec3 vN; in vec3 vP; uniform sampler2D uTex; uniform sampler2D uNrm; uniform vec3 uCam; out vec4 o;
+in vec2 vUV; in float vMet; in vec3 vN; in vec3 vP; uniform sampler2D uTex; uniform sampler2D uNrm; uniform vec3 uCam; uniform float uTm; out vec4 o;
 vec3 fogc(vec3 c, vec3 P, vec3 E){ float d=length(P-E); vec3 f=vec3(.56,.64,.74); return mix(c,f,smoothstep(90.,700.,d)*.8); }
 void main(){
  vec3 Ng=normalize(vN); vec3 V=normalize(uCam-vP);
@@ -207,6 +207,11 @@ void main(){
  vec3 H=normalize(L1+V); float sp=pow(max(dot(N,H),0.),36.);
  c+=mix(vec3(.4),al*1.6,met)*sp*d1*(.06+.9*met);
  vec3 R=reflect(-V,N); c+=al*met*mix(vec3(.10,.09,.09),vec3(.38,.44,.55),R.y*.5+.5)*.9;
+ if(vUV.y>.5){ float gm=smoothstep(.10,.28,tc.r-tc.b)*smoothstep(.35,.6,tc.g/max(tc.r,.01))*smoothstep(.22,.45,tc.r);
+  float h=fract(sin(dot(floor(vUV*1400.),vec2(12.9898,78.233)))*43758.5453);
+  float pul=.5+.5*sin(uTm*3.+vP.x*9.+vP.y*7.+vP.z*5.);
+  float tw=pow(max(0.,sin(6.2832*(h+uTm*.45))),18.);
+  c+=vec3(1.,.66,.14)*al*gm*(.35+.55*pul)+vec3(1.,.86,.45)*gm*tw*1.4; }
  c=fogc(c,vP,uCam);
  o=vec4(pow(c,vec3(1./2.2)),1.); }"""
 

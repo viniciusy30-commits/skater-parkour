@@ -46,7 +46,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
             val sqb = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, sqb); glBufferData(GL_ARRAY_BUFFER, 32, sq, GL_STATIC_DRAW)
             glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, false, 8, 0); glBindVertexArray(0)
             progSkin = Gl.program(Shaders.SKINT_VS, Shaders.CHAR_TFS)
-            for (n in listOf("uBones", "uTex", "uNrm", "uVP", "uM", "uCtr", "uExt", "uCam")) u[n] = glGetUniformLocation(progSkin, n)
+            for (n in listOf("uBones", "uTex", "uNrm", "uVP", "uM", "uCtr", "uExt", "uCam", "uTm")) u[n] = glGetUniformLocation(progSkin, n)
             boneBuf = Gl.floats(nJ * 16)
             boneTex = Gl.gen(::glGenTextures)
             glBindTexture(GL_TEXTURE_2D, boneTex)
@@ -100,6 +100,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, charTex); glActiveTexture(GL_TEXTURE1)
         glUniformMatrix4fv(u["uVP"]!!, 1, false, vp, 0); glUniformMatrix4fv(u["uM"]!!, 1, false, g.charM, 0)
         glUniform3fv(u["uCtr"]!!, 1, body.ctr, 0); glUniform3fv(u["uExt"]!!, 1, body.ext, 0); glUniform3fv(u["uCam"]!!, 1, g.eye, 0)
+        glUniform1f(u["uTm"]!!, (now / 1_000_000L % 600_000L) / 1000f)
         body.draw()
         // inimigo (Guerreiro Sombra): mesma malha, outro esqueleto
         boneBuf.clear(); boneBuf.put(g.foeSkel.skin, 0, nJ * 16); boneBuf.flip()

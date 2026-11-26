@@ -1,3 +1,21 @@
+#id 2026-11-26-e
+#titulo Machados consertados e runas douradas
+- Corrigido o bug dos machados: a metade de cima (a lamina) estava presa na cabeca do guerreiro e a de baixo na mao, por isso a arma esticava e girava de forma estranha; agora o machado inteiro e rigido e segue a mao
+- Nos ataques o machado agora bate com a lamina (o fio vai na frente do golpe) e nao mais de lado: orientacao de cada machado na mao calculada a partir do movimento real dos combos
+- Runas do machado em dourado cintilante: brilho pulsando e faiscas piscando nas runas
+
+#id 2026-11-26-d
+#titulo Boca e queixo presos a cabeca
+- Boca e queixo agora acompanham a cabeca na animacao (antes seguiam o pescoco e esticavam/entortavam)
+- Boca reta e mais afastada do nariz; queixo com proporcao normal
+
+#id 2026-11-26-c
+#titulo Tatuagens pretas, cabelo e boca corrigidos
+- Tatuagens voltaram a ser pretas (as runas vermelhas do machado continuam)
+- Mechas de cabelo com cor de pele ficaram pretas
+- Boca refeita: linha continua, sem o degrau e sem a mancha embaixo
+- Modo Rosto do visualizador com lente longa: o rosto nao parece mais esticado
+
 #id 2026-11-26-b
 #titulo Rosto, cabelo e tatuagens corrigidos
 - Rosto refeito sem distorção: a cabeça agora usa a malha original completa (nariz, queixo e olhos no lugar, sem ficar torto ou esticado)
