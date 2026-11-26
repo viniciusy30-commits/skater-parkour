@@ -29,6 +29,8 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
     private val LOL_YAW = 0.785f; private val LOL_PITCH = 0.95f; private val LOL_MIN = 7.5f; private val LOL_MAX = 16f
     var underwater = false
     private var emoteI = 0
+    private val armPose = Pose()
+    private val ARM_UP = intArrayOf(10, 11, 12, 13, 29, 30, 31, 32)
     private var lt = 0f; private var lclip = "c:idle_00"; private var idleT = 0f
 
     /** Clipe de locomoção do guerreiro a partir da velocidade e da direção reais (sem depender dos clipes do parkour). */
@@ -164,6 +166,11 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         if (combat.busy) {
             if (combat.changed) { anim.changed(combat.fade); combat.changed = false }
             anim.update(combat.clip, combat.t, combat.loop, dt)
+            if (combat.armUp) {
+                // andando na mira da Skill 4: o braço do machado fica levantado (ossos 10-13 = clavícula/braço/antebraço/mão direitos, 29-32 = torções)
+                csr.sample(csr["c:throw"], 0.14f, false, armPose)
+                for (j in ARM_UP) System.arraycopy(armPose.q, j * 4, anim.out.q, j * 4, 4)
+            }
         } else {
             val loco = player.st == Player.St.LOCO && !player.clip.contains("Death")
             val pc: String; val tt: Float; val lp: Boolean

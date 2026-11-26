@@ -109,6 +109,8 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     var camYawIn = 0f
     private fun dragYaw(): Float = if (Input.aimActive) camYawIn + atan2(Input.aimX, Input.aimY) else player.yaw
     private var aim4T = 0f; private var aimWalkT = 0f
+    /** Mirando a Skill 4 e andando: o Game mantém o braço direito levantado (pose de braço armado) por cima da caminhada. */
+    val armUp: Boolean get() = busy && kind == "s4aim" && clip != "c:throw"
     private fun startAim4() {
         if (!canCast(3) || kind == "dead") return
         aim4T = 0f; busy = true; kind = "s4aim"; guard = false; bufE = ""

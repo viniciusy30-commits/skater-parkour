@@ -48,7 +48,7 @@ private const val VS = "#version 300 es\n" +
 private const val FS = "#version 300 es\n" +
     "precision highp float;\n" +
     "in vec2 vUV;in vec4 vCol;in vec4 vPrm;in vec3 vW;out vec4 o;\n" +
-    "uniform float uTime;uniform vec3 uEye;uniform sampler2D uAtl;uniform vec2 uAG;\n" +
+    "uniform float uTime;uniform vec3 uEye;uniform sampler2D uAtl;uniform vec2 uAG;uniform float uGr,uDk;\n" +
     "float ss(float a,float b,float x){float t=clamp((x-a)/(b-a),0.,1.);return t*t*(3.-2.*t);}\n" +
     "float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}\n" +
     "float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}\n" +
@@ -129,14 +129,14 @@ private const val FS = "#version 300 es\n" +
     "  if(lay<.5)r=vec4(tx*c,A);\n" +
     "  else if(lay<1.5)r=vec4(c*(.75+.4*L),clamp(L*1.15,0.,1.)*A);\n" +
     "  else r=vec4(mix(c*L,vec3(L),L*L*.8)*1.35,A);}\n" +
-    " o=r;}\n"
+    " float Lg=dot(r.rgb,vec3(.3,.59,.11));o=vec4(mix(r.rgb,vec3(Lg*.82,Lg*.86,Lg*.95)*uDk,uGr),r.a);}\n"
 
 // ---- rastro dourado das lâminas (TRL do visualizador) ----
 private const val TVS = "#version 300 es\n" +
     "layout(location=0) in vec3 aP;layout(location=1) in vec2 aU;layout(location=2) in vec4 aR;\n" +
     "uniform mat4 uVP;out vec2 vU;out vec4 vR;void main(){vU=aU;vR=aR;gl_Position=uVP*vec4(aP,1.);}\n"
 private const val TFS = "#version 300 es\n" +
-    "precision highp float;in vec2 vU;in vec4 vR;uniform float uG;uniform float uR;out vec4 o;\n" +
+    "precision highp float;in vec2 vU;in vec4 vR;uniform float uG;uniform float uR;uniform float uK;out vec4 o;\n" +
     "float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\n" +
     "float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1.,0.)),f.x),mix(h(i+vec2(0.,1.)),h(i+vec2(1.,1.)),f.x),f.y);}\n" +
     "void mainX(){\n" +
@@ -156,7 +156,7 @@ private const val TFS = "#version 300 es\n" +
     " float t=clamp(I*.7,0.,1.);\n" +
     " vec3 col=mix(vec3(.9,.25,.02),vec3(1.,.72,.16),smoothstep(0.,.45,t));col=mix(col,vec3(1.,.96,.8),smoothstep(.55,1.,t));\n" +
     " o=vec4(col*I*1.05,1.);}\n" +
-    "void main(){mainX();float l=max(o.r,max(o.g,o.b));o.rgb=mix(o.rgb,vec3(l*1.1,l*.1+o.b*.3,l*.06+o.b*.25),uR);}\n"
+    "void main(){mainX();float l=max(o.r,max(o.g,o.b));o.rgb=mix(o.rgb,vec3(l*1.1,l*.1+o.b*.3,l*.06+o.b*.25),uR);float Lg=dot(o.rgb,vec3(.3,.59,.11));o.rgb=mix(o.rgb,vec3(Lg*.82,Lg*.86,Lg*.95)*.8,uK*(1.-uR));}\n"
 
 // ---- onda de choque (Vefects Easy Shockwaves) ----
 private const val SVS = "#version 300 es\n" +
@@ -164,7 +164,7 @@ private const val SVS = "#version 300 es\n" +
     "void main(){float a=aP.x*6.2831853;float r=mix(uRin,1.,aP.y)*uR;vec3 w=uC+vec3(cos(a)*r,.02+aP.y*.0,sin(a)*r);vUv=vec2(aP.x*3.,aP.y);vW=w;gl_Position=uVP*vec4(w,1.);}\n"
 private const val SFS = "#version 300 es\n" +
     "precision highp float;in vec2 vUv;in vec3 vW;out vec4 o;\n" +
-    "uniform sampler2D tB,tN,tD,tM;uniform float uT,uOff,uEro,uEmi,uCA,uA,uPow,uMul;uniform vec3 uCol;\n" +
+    "uniform sampler2D tB,tN,tD,tM;uniform float uK;uniform float uT,uOff,uEro,uEmi,uCA,uA,uPow,uMul;uniform vec3 uCol;\n" +
     "void main(){\n" +
     " vec2 uv=vUv;\n" +
     " vec2 dn=texture(tD,uT*vec2(.02,-.1)+uv).rg*2.-1.;\n" +
@@ -177,7 +177,7 @@ private const val SFS = "#version 300 es\n" +
     " float e=smoothstep(uEro,uEro+1.,m);\n" +
     " float it=clamp(pow(clamp(e,0.,1.),5.)*5.,0.,1.);\n" +
     " float edge=smoothstep(0.,.12,uv.y)*smoothstep(1.,.78,uv.y);\n" +
-    " vec3 c=uCol*base*uEmi*it;float al=clamp(it*edge*uA,0.,1.);\n" +
+    " vec3 c=uCol*base*uEmi*it;float Lg=dot(c,vec3(.3,.59,.11));c=mix(c,vec3(Lg*.82,Lg*.86,Lg*.95)*.8,uK);float al=clamp(it*edge*uA,0.,1.);\n" +
     " o=vec4(c*al*1.6,al);}\n"
 
 
@@ -1137,7 +1137,7 @@ class Vfx {
         val rows = arrayOf(samples(trails[0]), samples(trails[1]))
         if (rows[0] == null && rows[1] == null && sparks.isEmpty()) return
         glUseProgram(tProg)
-        glUniformMatrix4fv(tuVP, 1, false, vp, 0); glUniform1f(tuR, redT)
+        glUniformMatrix4fv(tuVP, 1, false, vp, 0); glUniform1f(tuR, redT); glUniform1f(tuK, 1f - min(1f, redT))
         glBindVertexArray(tVao); glBindBuffer(GL_ARRAY_BUFFER, tVbo)
         glEnable(GL_DEPTH_TEST); glDepthMask(false); glDisable(GL_CULL_FACE); glEnable(GL_BLEND); glBlendFunc(GL_ONE, GL_ONE)
         for (pass in intArrayOf(1, 0)) {
@@ -1193,7 +1193,7 @@ class Vfx {
             val layers = if (s.pw > 1.5f) 3 else 2
             for (L in 0 until layers) {
                 val k = if (L == 2) 1.18f else (if (L == 1) .62f else 1f)
-                glUniform3f(suC, s.cx, oy, s.cz); glUniform1f(suR, s.R * k * (.4f + .75f * e)); glUniform1f(suRin, .45f)
+                glUniform1f(suK, 1f - min(1f, redT)); glUniform3f(suC, s.cx, oy, s.cz); glUniform1f(suR, s.R * k * (.4f + .75f * e)); glUniform1f(suRin, .45f)
                 glUniform1f(suT, s.age + s.seed + L * 3.1f); glUniform1f(suOff, -.15f + .2f * q)
                 glUniform1f(suEro, max(0f, (q - .35f) * 1.4f)); glUniform1f(suEmi, (if (L > 0) 1.2f else 1.6f) * (.8f + .35f * s.pw)); glUniform1f(suCA, if (L > 0) 2f else 6f)
                 glUniform1f(suA, (1f - q * q) * (if (L > 0) .7f else 1f) * (if (L == 2) .55f else 1f)); glUniform1f(suPow, 1f); glUniform1f(suMul, 1f)
@@ -1209,6 +1209,7 @@ class Vfx {
     // ================================================================ GL
     private var ready = false
     private var prog = 0; private var vao = 0; private var vbo = 0; private var atlTex = 0
+    private var uGr = 0; private var uDk = 0; private var tuK = 0; private var suK = 0
     private var uVP = 0; private var uTime = 0; private var uEye = 0; private var uAtl = 0; private var uAG = 0
     private var tProg = 0; private var tVao = 0; private var tVbo = 0; private var tuVP = 0; private var tuG = 0; private var tuR = 0
     private var sProg = 0; private var sVao = 0
@@ -1263,6 +1264,7 @@ class Vfx {
             prog = Gl.program(VS, FS)
             uVP = glGetUniformLocation(prog, "uVP"); uTime = glGetUniformLocation(prog, "uTime"); uEye = glGetUniformLocation(prog, "uEye")
             uAtl = glGetUniformLocation(prog, "uAtl"); uAG = glGetUniformLocation(prog, "uAG")
+            uGr = glGetUniformLocation(prog, "uGr"); uDk = glGetUniformLocation(prog, "uDk")
             vao = Gl.gen(::glGenVertexArrays); glBindVertexArray(vao)
             vbo = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, vbo)
             glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, false, 52, 0)
@@ -1272,7 +1274,7 @@ class Vfx {
             glBindVertexArray(0)
             fb = Gl.floats(13 * MAXV)
             tProg = Gl.program(TVS, TFS)
-            tuVP = glGetUniformLocation(tProg, "uVP"); tuG = glGetUniformLocation(tProg, "uG"); tuR = glGetUniformLocation(tProg, "uR")
+            tuVP = glGetUniformLocation(tProg, "uVP"); tuG = glGetUniformLocation(tProg, "uG"); tuR = glGetUniformLocation(tProg, "uR"); tuK = glGetUniformLocation(tProg, "uK")
             tVao = Gl.gen(::glGenVertexArrays); glBindVertexArray(tVao)
             tVbo = Gl.gen(::glGenBuffers); glBindBuffer(GL_ARRAY_BUFFER, tVbo)
             glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, false, 36, 0)
@@ -1284,7 +1286,7 @@ class Vfx {
         } catch (t: Throwable) { Log.e("Vfx", "init", t) }
         try {
             sProg = Gl.program(SVS, SFS)
-            suVP = glGetUniformLocation(sProg, "uVP"); suC = glGetUniformLocation(sProg, "uC"); suR = glGetUniformLocation(sProg, "uR"); suRin = glGetUniformLocation(sProg, "uRin")
+            suVP = glGetUniformLocation(sProg, "uVP"); suC = glGetUniformLocation(sProg, "uC"); suR = glGetUniformLocation(sProg, "uR"); suRin = glGetUniformLocation(sProg, "uRin"); suK = glGetUniformLocation(sProg, "uK")
             suT = glGetUniformLocation(sProg, "uT"); suOff = glGetUniformLocation(sProg, "uOff"); suEro = glGetUniformLocation(sProg, "uEro"); suEmi = glGetUniformLocation(sProg, "uEmi")
             suCA = glGetUniformLocation(sProg, "uCA"); suA = glGetUniformLocation(sProg, "uA"); suPow = glGetUniformLocation(sProg, "uPow"); suMul = glGetUniformLocation(sProg, "uMul")
             suCol = glGetUniformLocation(sProg, "uCol")
@@ -1359,6 +1361,7 @@ class Vfx {
         }
         glUseProgram(prog)
         glUniformMatrix4fv(uVP, 1, false, vp, 0); glUniform1f(uTime, tclock); glUniform3f(uEye, camE[0], camE[1], camE[2])
+        glUniform1f(uGr, 1f - min(1f, redT))
         glActiveTexture(GL_TEXTURE6); glBindTexture(GL_TEXTURE_2D, atlTex); glUniform1i(uAtl, 6); glUniform2f(uAG, 16f, 8f)
         glActiveTexture(GL_TEXTURE0)
         glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo)
@@ -1372,6 +1375,7 @@ class Vfx {
     private fun pass(B: Bt, alpha: Boolean) {
         if (B.n == 0) return
         glBlendFunc(GL_SRC_ALPHA, if (alpha) GL_ONE_MINUS_SRC_ALPHA else GL_ONE)
+        glUniform1f(uDk, if (alpha) .3f else .75f)   // alpha: fumaça preta; aditivo: brilho cinza escuro
         fb.clear(); fb.put(B.a, 0, B.n * 13); fb.flip()
         glBufferData(GL_ARRAY_BUFFER, B.n * 13 * 4, fb, GL_DYNAMIC_DRAW)
         glDrawArrays(GL_TRIANGLES, 0, B.n)
