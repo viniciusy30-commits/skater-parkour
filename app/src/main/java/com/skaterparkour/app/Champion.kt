@@ -31,8 +31,8 @@ object Champions {
         cost = floatArrayOf(20f, 30f, 40f, 35f, 100f, 0f),
         basicSegs = arrayOf(floatArrayOf(0.3f, 1.05f), floatArrayOf(1.2f, 1.63f), floatArrayOf(1.85f, 2.3f), floatArrayOf(2.6f, 3.85f)),
         basicCancel = floatArrayOf(0.71f, 0.41f, 0.40f, 0.71f),
-        basicScale = 1.5f, skillScale = 1.3f, ultScale = 1.1f, dashScale = 1.4f,
-        dashDist = 5.2f, dashTime = 0.22f, invul = 0.38f, lungeMax = 3.2f,
+        basicScale = 1.0f, skillScale = 0.95f, ultScale = 0.9f, dashScale = 1.05f,
+        dashDist = 5.2f, dashTime = 0.3f, invul = 0.42f, lungeMax = 4.5f,
         manaRegen = 10f, comboWindow = 2.2f, comboBonus = 0.03f,
     )
 }

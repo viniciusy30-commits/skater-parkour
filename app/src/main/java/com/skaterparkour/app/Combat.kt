@@ -96,9 +96,8 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         vfx.dust(player.x, player.z, 0.5f, 6)
     }
     private fun doAtk() {
-        val inBasic = busy && kind == "basic"
-        val idx = if (inBasic) (basicIdx + 1) % 4 else if (busy) 0 else if (clock - basicEnd > 1.8f) 0 else (basicIdx + 1) % 4
-        startBasic(idx, inBasic)
+        // estilo LoL: um único golpe por toque, mirando no alvo (avança até ele sozinho)
+        startBasic(0, busy && kind == "basic")
     }
     /** Avanço automático até o inimigo: o golpe sempre conecta sem precisar de precisão. */
     private fun lunge(maxD: Float) {
