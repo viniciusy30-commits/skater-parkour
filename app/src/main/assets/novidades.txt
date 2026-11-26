@@ -1,3 +1,12 @@
+#id 2026-11-26-g
+#titulo Efeitos 3D no combate (aura, impactos, corrente)
+- Aura da Ultimate em 3D: anel de fogo girando no chao, chamas e brasas subindo em volta do corpo e brilho vermelho pulsando
+- Ultimate: energia vermelha sendo puxada para o corpo, feixe de luz vertical no rugido, ondas de choque e explosao na pancada final
+- Impactos de verdade em toda pancada: clarao, anel, estrela, laminas de corte, fagulhas e respingos de sangue
+- Skill 1: X de corte vermelho gigante; Skill 3: explosao de fogo, fumaca e chao queimado; Skill 2: ondas douradas
+- Skill 4: corrente de elos dourados que voa ate o inimigo, cola nele e o puxa; estrelas giram na cabeca dele atordoado
+- Os efeitos aparecem por cima do corpo, entao o personagem grande nao esconde mais nada
+
 #id 2026-11-26-f
 #titulo Furia carmesim no buff
 - Runas do machado agora pretas e apagadas (sem dourado); no buff acendem em vermelho carmesim cintilante

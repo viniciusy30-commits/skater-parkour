@@ -58,6 +58,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
             game = g
+            g.combat.vfx.initGl(ctx)
             last = System.nanoTime()
             loadMsg = ""
         } catch (t: Throwable) {
@@ -119,5 +120,7 @@ class Renderer(private val ctx: Context, private val audio: Audio) : GLSurfaceVi
         body.draw()
         glBindVertexArray(0)
 
+        // efeitos 3D do combate (impactos, aura, corrente...) por cima de tudo
+        try { g.combat.vfx.draw(vp, view, g.eye) } catch (e: Throwable) { Log.e("Vfx", "draw", e); lastErr = e.toString() }
     }
 }

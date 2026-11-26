@@ -259,12 +259,7 @@ class Hud(ctx: Context, private val r: Renderer, private val onSettings: () -> U
                 bar(c, bx - d(40f), by - d(2f), d(80f), d(7f), f.hp / Foe.MAXHP, 0xFFD23B2E.toInt())
             }
         }
-        // aura da ultimate
-        if (cb.ultT > 0f) {
-            val pulse = 0.55f + 0.35f * sin(g.time * 9f)
-            groundRing(c, m, pl.x, pl.y + 0.03f, pl.z, 1.1f + 0.15f * sin(g.time * 7f), withA(0xFFFF2A1A.toInt(), pulse), d(4f))
-            groundRing(c, m, pl.x, pl.y + 0.03f, pl.z, 1.7f, withA(0xFFFF7A2A.toInt(), pulse * 0.6f), d(2f))
-        }
+        // aura da ultimate: agora é desenhada em 3D (Vfx)
         // efeitos
         for (e in cb.fx) {
             val p = clampf(e.age / e.life, 0f, 1f)

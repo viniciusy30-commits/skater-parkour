@@ -32,6 +32,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
 
     val foe = Foe()
     val fx = ArrayList<Fx>()
+    val vfx = Vfx()
     val pops = ArrayList<Pop>()
     val maxHp = 100f; val maxMana = 100f
     var hp = 100f; var mana = 100f
@@ -92,7 +93,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         lungeT = ch.dashTime; lvx = sin(dir) * ch.dashDist / ch.dashTime; lvz = cos(dir) * ch.dashDist / ch.dashTime
         invulT = ch.invul
         sfx("swing1", 0.6f, 1.4f)
-        fx.add(Fx(0, player.x, player.y, player.z, 1.4f, 0.35f, WHITE))
+        vfx.shock(player.x, player.y, player.z, 1.4f, 0.35f, WHITE, false)
     }
     private fun doAtk() {
         val inBasic = busy && kind == "basic"
@@ -151,6 +152,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             else if (!busy || cancelable()) { if (busy || canStart) { val e = bufE; bufE = ""; exec(e) } }
         }
         updateFoe(dt)
+        vfx.update(dtIn, player.x, player.y, player.z, player.yaw, ultT > 0f)
         var k = 0
         while (k < fx.size) { val f = fx[k]; f.age += dtIn; if (f.age >= f.life) fx.removeAt(k) else k++ }
         k = 0
@@ -255,7 +257,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     }
 
     // ------------------------------------------------------------------------------------ skills
-    private fun ring(cx: Float, cz: Float, r: Float, life: Float, c: Int) { fx.add(Fx(0, cx, player.y, cz, r, life, c)) }
+    private fun ring(cx: Float, cz: Float, r: Float, life: Float, c: Int, big: Boolean = false) { vfx.shock(cx, player.y, cz, r, life, c, big) }
 
     private fun skill1() {
         val ev = ArrayList<Ev>()
@@ -263,8 +265,8 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         ev.add(Ev(0.72f) {
             sfx("s1_launch")
             val f = foe
-            if (f.state != 5 && hypot(f.x - player.x, f.z - player.z) <= 6f) fx.add(Fx(1, f.x, 1.2f, f.z, 1.2f, 0.45f, RED))
-            else fx.add(Fx(1, player.x + fwdX() * 2.2f, 1.2f, player.z + fwdZ() * 2.2f, 1.2f, 0.45f, RED))
+            if (f.state != 5 && hypot(f.x - player.x, f.z - player.z) <= 6f) vfx.cross(f.x, f.y + 1.2f, f.z, 1f, ultT > 0f)
+            else vfx.cross(player.x + fwdX() * 2.2f, player.y + 1.2f, player.z + fwdZ() * 2.2f, 1f, ultT > 0f)
         })
         ev.add(Ev(0.92f) {
             sfx("s1_impact")
@@ -276,7 +278,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
     private fun skill2() {
         parried = false
         val ev = ArrayList<Ev>()
-        ev.add(Ev(0.04f) { sfx("s2_guard"); guard = true })
+        ev.add(Ev(0.04f) { sfx("s2_guard"); guard = true; vfx.shock(player.x, player.y, player.z, 1.6f, 0.45f, GOLD, false) })
         ev.add(Ev(1.0f) { guard = false })
         ev.add(Ev(1.02f) {
             sfx("s2_wave"); sfx("s2_thud", 0.8f)
@@ -293,14 +295,14 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         ev.add(Ev(0.28f) {
             sfx("s3_rise")
             val f = foe
-            if (f.state != 5) fx.add(Fx(2, f.x, f.y, f.z, 1.9f, 1.0f, EARTH))
+            if (f.state != 5) vfx.seal(f.x, f.y, f.z, 1.9f, 1.0f)
         })
         ev.add(Ev(1.28f) { sfx("swing3") })
         ev.add(Ev(1.36f) {
             sfx("s3_slam"); sfx("s3_boom", 0.85f)
             val cx = player.x + fwdX() * 1.8f; val cz = player.z + fwdZ() * 1.8f
             hitFoe(cx, cz, 3.6f, 22f, 2, 2f)
-            ring(cx, cz, 3.8f, 0.7f, EARTH)
+            vfx.earthBlast(cx, player.y, cz)
             addShake(1f); hitstop = 0.09f; addFlash(0.25f, 0xFFFFD0C8.toInt())
         })
         beginSeq("s3", listOf(Seg("c:attack_05", 0f, 2.7f, 0.12f)), ev, false, 1.45f)
@@ -308,7 +310,10 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
 
     private fun skill4() {
         val ev = ArrayList<Ev>()
-        ev.add(Ev(0.2f) { sfx("chain_throw"); sfx("axe_whir", 0.8f) })
+        ev.add(Ev(0.2f) {
+            sfx("chain_throw"); sfx("axe_whir", 0.8f)
+            vfx.chainStart(foe, foe.state != 5 && hypot(foe.x - player.x, foe.z - player.z) <= 14f)
+        })
         ev.add(Ev(0.45f) {
             val f = foe
             if (f.state != 5 && hypot(f.x - player.x, f.z - player.z) <= 14f) {
@@ -318,7 +323,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
                     f.state = 2; f.stT = 0f; f.hold = 1.9f; f.play("c:stun", true, 0.1f)
                     f.pullT = 0.6f; f.pullSx = f.x; f.pullSz = f.z
                     f.pullTx = player.x + fwdX() * 1.7f; f.pullTz = player.z + fwdZ() * 1.7f
-                    fx.add(Fx(1, f.x, 1.2f, f.z, 0.6f, 0.4f, GOLD))
+                    vfx.stun(f, 1.9f)
                 }
             } else sfx("chain_snap_o", 0.7f)
         })
@@ -331,8 +336,8 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
 
     private fun ultimate() {
         val ev = ArrayList<Ev>()
-        ev.add(Ev(0.02f) { addFlash(0.3f, 0xFFFF2A1A.toInt()) })
-        ev.add(Ev(0.3f) { sfx("ult_roar"); ultT = 5.8f; addShake(1f); addFlash(0.3f, 0xFFFF2A1A.toInt()) })
+        ev.add(Ev(0.02f) { addFlash(0.3f, 0xFFFF2A1A.toInt()); vfx.gather(0.55f) })
+        ev.add(Ev(0.3f) { sfx("ult_roar"); ultT = 5.8f; addShake(1f); addFlash(0.3f, 0xFFFF2A1A.toInt()); vfx.roar(player.x, player.y, player.z) })
         ev.add(Ev(0.55f) { sfx("ult_aura") })
         val times = floatArrayOf(1.92f, 2.75f, 3.55f, 4.55f)
         for (i in 0 until 4) {
@@ -341,7 +346,8 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
                 if (last) { sfx("ult_final"); sfx("ult_debris", 0.9f); sfx("ult_slam", 0.8f, 0.9f) }
                 else { sfx("ult_slam", 0.8f + i * 0.08f); sfx("ult_debris", 0.55f + i * 0.08f) }
                 hitFoe(player.x, player.z, 5f, if (last) 30f else 14f, if (last) 2 else 1, if (last) 4f else 1.2f)
-                ring(player.x + fwdX() * 1.5f, player.z + fwdZ() * 1.5f, if (last) 7f else 3.5f + i * 0.6f, 0.7f, RED)
+                ring(player.x + fwdX() * 1.5f, player.z + fwdZ() * 1.5f, if (last) 7f else 3.5f + i * 0.6f, 0.7f, RED, last)
+                if (last) vfx.blast(player.x + fwdX() * 1.5f, player.y, player.z + fwdZ() * 1.5f, 1.4f)
                 addShake(if (last) 3f else 1.5f + i * 0.3f); hitstop = if (last) 0.16f else 0.06f
                 if (last) addFlash(0.35f, 0xFFFF2A1A.toInt())
             })
@@ -360,6 +366,7 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
         val dmg = amount * (1f + min(combo - 1, 12) * ch.comboBonus)
         f.hp -= dmg
         pop(f.x, f.y + 2.1f, f.z, "-" + dmg.toInt(), if (dmg >= 20f) 0xFFFFC040.toInt() else WHITE)
+        if (amount > 0f) vfx.hit(f.x, f.y + 1.25f, f.z, 0.55f + amount / 28f, amount >= 18f || kindHit >= 2, ultT > 0f)
         if (combo >= 3 && combo % 3 == 0) pop(player.x, player.y + 2.7f, player.z, "COMBO x$combo", GOLD)
         val dx = f.x - player.x; val dz = f.z - player.z; val d = max(0.1f, hypot(dx, dz))
         f.vx += dx / d * push * 4f; f.vz += dz / d * push * 4f
@@ -388,12 +395,14 @@ class Combat(private val cs: ClipSet, private val player: Player, private val au
             parried = true
             f.state = 2; f.stT = 0f; f.hold = 1.4f; f.play("c:hit_heavy_front", false, 0.06f)
             pop(player.x, player.y + 2.1f, player.z, "DEFENDIDO!", GOLD)
+            vfx.hit(player.x + fwdX() * 0.6f, player.y + 1.3f, player.z + fwdZ() * 0.6f, 1.1f, false, false)
             addShake(0.5f); hitstop = 0.07f; addFlash(0.2f, 0xFFFFE9B0.toInt())
             return
         }
         hp -= 10f; combo = 0
         sfx("hit_body"); addShake(0.4f); addFlash(0.18f, 0xFFFF2A1A.toInt())
         pop(player.x, player.y + 2.1f, player.z, "-10", RED)
+        vfx.hit(player.x, player.y + 1.2f, player.z, 0.8f, false, true)
         if (hp <= 0f) {
             hp = 0f; kind = "dead"; busy = true; deadT = 0f; guard = false; ultT = 0f
             clip = "c:dead01"; t = 0f; loop = false; changed = true; fade = 0.08f
