@@ -183,6 +183,7 @@ class Game(cs: ClipSet, rig: RigData, val world: World, val stations: List<Stati
         M4.trs(foeM, fo.x, fo.y, fo.z, fo.yaw, 1f)
         skel.solve(anim.out)
         M4.trs(charM, player.x, player.y, player.z, player.yaw, 1f)
+        combat.postPose(dt, skel.skin, charM, skel.world[skel.pelvisNode * 16 + 12], skel.world[skel.pelvisNode * 16 + 13], skel.world[skel.pelvisNode * 16 + 14])
 
         // câmera
         val k = min(1f, dt * 9f)

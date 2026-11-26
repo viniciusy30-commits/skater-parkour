@@ -7,6 +7,7 @@ import kotlin.math.min
 class Skeleton(private val rig: RigData) {
     val world = FloatArray(rig.nNodes * 16)
     val skin = FloatArray(rig.nJoints * 16)
+    val pelvisNode: Int get() = rig.pelvisNode
     private val lm = FloatArray(16)
     private val boneOf = IntArray(rig.nNodes) { -1 }
 
