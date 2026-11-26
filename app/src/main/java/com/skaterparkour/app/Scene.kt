@@ -183,13 +183,23 @@ mat4 B(uint i){int r=int(i);return mat4(texelFetch(uBones,ivec2(0,r),0),texelFet
 void main(){ vec4 p=vec4(uCtr+aPos.xyz*uExt,1.); mat4 m=B(aJ.x)*aW.x+B(aJ.y)*aW.y+B(aJ.z)*aW.z+B(aJ.w)*aW.w;
  vec4 w=uM*(m*p); vP=w.xyz; vN=mat3(uM)*(mat3(m)*normalize(aNrm.xyz)); vMet=aNrm.w; vUV=aUV; gl_Position=uVP*w; }"""
 
-    /** Mesma iluminação do CHAR_FS, mas a cor sai do atlas (RGB em gama 2.0). */
+    /** Guerreiro com textura do modelo original: cor (atlas) + normal map (RG) e metal (B) no segundo atlas, mesma iluminação de antes. */
     const val CHAR_TFS = """#version 300 es
 precision highp float;
-in vec2 vUV; in float vMet; in vec3 vN; in vec3 vP; uniform sampler2D uTex; uniform vec3 uCam; out vec4 o;
+in vec2 vUV; in float vMet; in vec3 vN; in vec3 vP; uniform sampler2D uTex; uniform sampler2D uNrm; uniform vec3 uCam; out vec4 o;
 vec3 fogc(vec3 c, vec3 P, vec3 E){ float d=length(P-E); vec3 f=vec3(.56,.64,.74); return mix(c,f,smoothstep(90.,700.,d)*.8); }
-void main(){ vec3 N=normalize(vN); if(!gl_FrontFacing) N=-N; vec3 V=normalize(uCam-vP);
- float met=clamp(vMet,0.,1.); vec3 tc=texture(uTex,vUV).rgb; vec3 al=tc*tc;
+void main(){
+ vec3 Ng=normalize(vN); vec3 V=normalize(uCam-vP);
+ vec4 nm=texture(uNrm,vUV);
+ vec2 xy=nm.rg*2.-1.; vec3 tn=vec3(xy,sqrt(max(1.-dot(xy,xy),0.)));
+ vec2 uvn=vec2(vUV.x,vUV.y*2.);
+ vec3 dp1=dFdx(vP),dp2=dFdy(vP); vec2 du1=dFdx(uvn),du2=dFdy(uvn);
+ vec3 p2=cross(dp2,Ng), p1=cross(Ng,dp1);
+ vec3 T=p2*du1.x+p1*du2.x; vec3 Bv=p2*du1.y+p1*du2.y;
+ float iv=inversesqrt(max(max(dot(T,T),dot(Bv,Bv)),1e-20));
+ vec3 N=normalize(T*iv*tn.x-Bv*iv*tn.y+Ng*tn.z);
+ if(!gl_FrontFacing) N=-N;
+ float met=clamp(vMet*nm.b,0.,1.); vec3 tc=texture(uTex,vUV).rgb; vec3 al=tc*tc;
  vec3 L1=normalize(vec3(.5,.9,.7)), L2=normalize(vec3(-.8,.3,-.5));
  float d1=max(dot(N,L1),0.), d2=max(dot(N,L2),0.);
  vec3 hemi=mix(vec3(.38,.36,.35),vec3(.62,.64,.70),N.y*.5+.5);

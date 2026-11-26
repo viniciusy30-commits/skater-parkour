@@ -1,3 +1,18 @@
+#id 2026-11-26-b
+#titulo Rosto, cabelo e tatuagens corrigidos
+- Rosto refeito sem distorção: a cabeça agora usa a malha original completa (nariz, queixo e olhos no lugar, sem ficar torto ou esticado)
+- Cabelo todo preto: acabaram as mechas com cor de pele
+- Tatuagens voltaram ao vermelho escuro de antes
+- Pele sem brilho de metal e sem riscos esbranquiçados no peito e nos ombros
+
+#id 2026-11-26-a
+#titulo Personagem refeito em alta qualidade
+- Corpo refeito a partir do modelo original: 133 mil triângulos (antes 19 mil) e textura nova de 2048x2048 sem emendas visíveis
+- Normal map e brilho de metal: músculos, tecido, cinto, botas e cabelo agora têm relevo e detalhe
+- Rosto bem mais nítido: olhos, sobrancelhas, nariz e cabelo
+- Tatuagens vermelhas limpas, só na pele (sem manchar roupa, rosto ou mãos)
+- Mãos refeitas: dedos fechados em volta do cabo, sem esticar nas animações; costuras do corpo sem rachaduras
+
 #id 2026-11-25-n
 #titulo Machado de pé e mãos consertadas
 - O machado agora fica de pé nas mãos (punho girado como ao empunhar), não mais deitado e torto
